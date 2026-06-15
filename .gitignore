@@ -1,0 +1,18 @@
+# Unity-generated package import noise (this repo is a UPM package, not a full project).
+# IMPORTANT: .meta files are NOT ignored — Unity requires them committed for git packages.
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vs/
+.vscode/
+
+# Build / temp artifacts that may appear if opened inside a Unity project
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+*.csproj
+*.sln
+*.user

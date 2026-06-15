@@ -1,0 +1,62 @@
+# Changelog
+
+All notable changes to this package are documented here. This project adheres to
+[Semantic Versioning](https://semver.org/) and the format of
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-06-15
+
+### Added
+
+- Initial MVP SDK package (`com.bugcapture.sdk`).
+- `BugCapture.Init` / `Open` / `Capture` entry points.
+- `BugCaptureConfig` ScriptableObject (API key, endpoint, environment, hotkey,
+  capture toggles).
+- F8 hotkey overlay (minimal IMGUI) for filing a report in-game, working under any
+  Active Input Handling backend (legacy Input Manager, the new Input System, or Both).
+- Screenshot capture (PNG), recent-log ring buffer, and metadata collection
+  (scene, player position, build/engine version, device specs, runtime info,
+  optional reporter identity), serialized to match the backend contract
+  field-for-field with empty optionals omitted.
+- Multipart upload to `POST /v1/reports` with idempotent `clientReportId` and
+  bounded retries on transient failures (0/429/5xx), with exponential backoff that
+  honors a `Retry-After` header on 429 (delta-seconds or HTTP-date). Non-retryable
+  errors fail fast.
+- Client-side size enforcement before upload (configurable caps): oversized
+  screenshots are progressively downscaled or dropped, logs are trimmed to their
+  most recent lines, and metadata free-text is truncated so the payload never
+  exceeds the caps the backend would otherwise reject with `FILE_TOO_LARGE`.
+- Typed send result (`SendResult`) surfaced from `BugCaptureClient.Send`, exposed
+  via the optional `BugCapture.Capture(report, onResult)` callback (reportId,
+  status, dashboardUrl on success; a friendly reason on failure).
+- Friendly translation of backend error responses (`{ error, message, details? }`)
+  into distinct, actionable messages for each documented code (`UNAUTHORIZED`,
+  `REQUEST_NOT_VALID`, `FILE_TOO_LARGE`, `REPORT_LIMIT_EXCEEDED`, and 429 rate
+  limiting), with graceful fallbacks for unknown errors; the raw `details` value is
+  preserved on `SendResult.details` for diagnostics.
+- Overlay send feedback: a success confirmation (with report ID and an "Open in
+  dashboard" link when returned) that resets the form, or an inline error banner
+  that keeps the entered text so the report can be fixed and retried.
+- Overlay input isolation: optional `pauseWhileOpen` (holds `Time.timeScale` at 0 while
+  the overlay is open, restoring the original scale on close/cancel) and
+  `blockGameplayInput` (neutralizes legacy Input Manager axes/buttons so form text doesn't
+  reach game controls). `BugCapture.IsOverlayOpen` / `BugCapture.IsInputBlocked` expose the
+  state for gating raw input polling in your own code.
+- Offline/failure queue: reports that fail to upload transiently (offline or a 5xx, after the
+  in-process retries) are persisted to disk and retried automatically on the next launch — and
+  opportunistically after the next successful send. The stable `clientReportId` makes the
+  cross-session retry idempotent, so a report the backend already received is deduplicated
+  rather than duplicated. The queue is bounded by `maxQueuedReports` (oldest dropped when full)
+  and can be disabled with `enableOfflineQueue`. The overlay confirms a saved report
+  (`SendResult.queuedForRetry`) instead of leaving the form open to be re-submitted.
+- Basic Usage sample and package documentation.
+- Editor version-sync check that errors when `BugCaptureVersion.Value` and
+  `package.json#version` drift, with a Tools menu action to sync them.
+- "Send Test Report" editor action (**Tools → BugCapture → Send Test Report**) that
+  uploads a synthetic report with the current config to verify connectivity and auth
+  end-to-end, reporting success (with a dashboard link) or a precise failure reason.
+
+[Unreleased]: https://github.com/bugcapture/bugcapture-unity/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/bugcapture/bugcapture-unity/releases/tag/v0.1.0

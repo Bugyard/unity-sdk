@@ -1,0 +1,28 @@
+{
+  "name": "com.bugcapture.sdk",
+  "version": "0.1.0",
+  "displayName": "BugCapture Unity SDK",
+  "description": "Capture screenshots, logs, scene name, player position, build version and device info from Unity playtests and send them to your BugCapture dashboard with one hotkey.",
+  "unity": "2021.3",
+  "documentationUrl": "https://github.com/bugcapture/bugcapture-unity#readme",
+  "changelogUrl": "https://github.com/bugcapture/bugcapture-unity/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/bugcapture/bugcapture-unity/blob/main/LICENSE",
+  "keywords": [
+    "bug",
+    "qa",
+    "playtest",
+    "reporting",
+    "screenshot",
+    "logs"
+  ],
+  "author": {
+    "name": "BugCapture"
+  },
+  "samples": [
+    {
+      "displayName": "Basic Usage",
+      "description": "Initialize BugCapture and open the report overlay with F8.",
+      "path": "Samples~/BasicUsage"
+    }
+  ]
+}
