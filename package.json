@@ -1,12 +1,12 @@
 {
-  "name": "com.bugcapture.sdk",
+  "name": "com.bugyard.sdk",
   "version": "0.1.0",
-  "displayName": "BugCapture Unity SDK",
-  "description": "Capture screenshots, logs, scene name, player position, build version and device info from Unity playtests and send them to your BugCapture dashboard with one hotkey.",
+  "displayName": "Bugyard Unity SDK",
+  "description": "Capture screenshots, logs, scene name, player position, build version and device info from Unity playtests and send them to your Bugyard dashboard with one hotkey.",
   "unity": "2021.3",
-  "documentationUrl": "https://github.com/bugcapture/bugcapture-unity#readme",
-  "changelogUrl": "https://github.com/bugcapture/bugcapture-unity/blob/main/CHANGELOG.md",
-  "licensesUrl": "https://github.com/bugcapture/bugcapture-unity/blob/main/LICENSE",
+  "documentationUrl": "https://github.com/bugyard/bugyard-unity#readme",
+  "changelogUrl": "https://github.com/bugyard/bugyard-unity/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/bugyard/bugyard-unity/blob/main/LICENSE",
   "keywords": [
     "bug",
     "qa",
@@ -16,12 +16,12 @@
     "logs"
   ],
   "author": {
-    "name": "BugCapture"
+    "name": "Bugyard"
   },
   "samples": [
     {
       "displayName": "Basic Usage",
-      "description": "Initialize BugCapture and open the report overlay with F8.",
+      "description": "Initialize Bugyard and open the report overlay with F8.",
       "path": "Samples~/BasicUsage"
     }
   ]

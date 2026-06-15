@@ -1,15 +1,12 @@
 {
-  "name": "BugCapture.Tests.Editor",
-  "rootNamespace": "BugCaptureSDK.Tests",
+  "name": "Bugyard.Tests.Runtime",
+  "rootNamespace": "BugyardSDK.Tests",
   "references": [
-    "BugCapture.Runtime",
-    "BugCapture.Editor",
+    "Bugyard.Runtime",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner"
   ],
-  "includePlatforms": [
-    "Editor"
-  ],
+  "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": true,

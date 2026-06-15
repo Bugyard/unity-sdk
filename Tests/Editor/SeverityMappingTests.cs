@@ -1,7 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 
-namespace BugCaptureSDK.Tests
+namespace BugyardSDK.Tests
 {
     /// <summary>
     /// The backend expects lowercase severity values (low | medium | high | critical).
@@ -16,7 +16,7 @@ namespace BugCaptureSDK.Tests
         [TestCase(Severity.Critical, "critical")]
         public void Build_MapsSeverityToLowercaseString(Severity severity, string expected)
         {
-            BugCaptureConfig config = ScriptableObject.CreateInstance<BugCaptureConfig>();
+            BugyardConfig config = ScriptableObject.CreateInstance<BugyardConfig>();
 
             ReportMetadata m = MetadataCollector.Build(config, new ReportInput { title = "x", severity = severity });
 
@@ -26,7 +26,7 @@ namespace BugCaptureSDK.Tests
         [Test]
         public void EveryEnumMemberMapsToAKnownBackendValue()
         {
-            BugCaptureConfig config = ScriptableObject.CreateInstance<BugCaptureConfig>();
+            BugyardConfig config = ScriptableObject.CreateInstance<BugyardConfig>();
             var allowed = new[] { "low", "medium", "high", "critical" };
 
             foreach (Severity severity in System.Enum.GetValues(typeof(Severity)))

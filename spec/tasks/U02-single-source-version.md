@@ -3,7 +3,7 @@
 **Status:** 🟡 partial · **Milestone:** M0 — Package & versioning hygiene · **Depends on:** U01
 
 ## Scope
-- `BugCaptureVersion.Value` (`Runtime/BugCaptureVersion.cs`) and `package.json#version` must match.
+- `BugyardVersion.Value` (`Runtime/BugyardVersion.cs`) and `package.json#version` must match.
 - Document/automate the sync (editor check or build step) so `sdkVersion` in metadata is never stale.
 
 ## Acceptance criteria

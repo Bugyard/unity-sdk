@@ -5,12 +5,12 @@ using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
-using static BugCaptureSDK.Tests.MockReportServer;
+using static BugyardSDK.Tests.MockReportServer;
 
-namespace BugCaptureSDK.Tests
+namespace BugyardSDK.Tests
 {
     /// <summary>
-    /// PlayMode coverage for <see cref="BugCaptureClient"/> driven against an in-process loopback
+    /// PlayMode coverage for <see cref="BugyardClient"/> driven against an in-process loopback
     /// mock of <c>POST /v1/reports</c> (<see cref="MockReportServer"/>) — no request ever leaves
     /// the machine or reaches a real backend. Covers every upload path: success parse, retry on
     /// 5xx and 429, <c>Retry-After</c> honoring, client-side size-limit enforcement, error-code
@@ -19,14 +19,14 @@ namespace BugCaptureSDK.Tests
     /// These are PlayMode tests because the send path yields on real <see cref="UnityWebRequest"/>
     /// calls and <see cref="WaitForSeconds"/> backoffs, neither of which advances in EditMode.
     /// </summary>
-    public class BugCaptureClientTests
+    public class BugyardClientTests
     {
-        const string ApiKey = "bc_pk_test_abc123";
+        const string ApiKey = "by_pk_test_abc123";
 
         MockReportServer _server;
-        BugCaptureConfig _config;
+        BugyardConfig _config;
 
-        static string QueueRoot => Path.Combine(Application.persistentDataPath, "BugCapture", "queue");
+        static string QueueRoot => Path.Combine(Application.persistentDataPath, "Bugyard", "queue");
 
         [SetUp]
         public void SetUp()
@@ -37,7 +37,7 @@ namespace BugCaptureSDK.Tests
 
             ClearQueue();
 
-            _config = ScriptableObject.CreateInstance<BugCaptureConfig>();
+            _config = ScriptableObject.CreateInstance<BugyardConfig>();
             _config.apiKey = ApiKey;
             _config.enableOfflineQueue = false; // opt in per-test so disk state is explicit
         }
@@ -59,11 +59,11 @@ namespace BugCaptureSDK.Tests
         {
             _server = new MockReportServer().Enqueue(Response.Json(201,
                 "{\"reportId\":\"r_abc123\",\"status\":\"created\"," +
-                "\"dashboardUrl\":\"https://app.bugcapture.dev/r/r_abc123\"}"));
+                "\"dashboardUrl\":\"https://app.bugyard.com/r/r_abc123\"}"));
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-success"), Png(), "player log line", r => result = r);
 
             Assert.IsNotNull(result);
@@ -71,7 +71,7 @@ namespace BugCaptureSDK.Tests
             Assert.AreEqual(201, result.httpStatus);
             Assert.AreEqual("r_abc123", result.reportId);
             Assert.AreEqual("created", result.status);
-            Assert.AreEqual("https://app.bugcapture.dev/r/r_abc123", result.dashboardUrl);
+            Assert.AreEqual("https://app.bugyard.com/r/r_abc123", result.dashboardUrl);
             Assert.IsFalse(result.queuedForRetry);
 
             // Exactly one request, to the right path, carrying the bearer token and all three parts.
@@ -93,7 +93,7 @@ namespace BugCaptureSDK.Tests
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-dupe"), null, null, r => result = r);
 
             Assert.IsTrue(result.success);
@@ -113,7 +113,7 @@ namespace BugCaptureSDK.Tests
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-retry-5xx"), null, null, r => result = r);
 
             Assert.IsTrue(result.success);
@@ -134,7 +134,7 @@ namespace BugCaptureSDK.Tests
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-retry-429"), null, null, r => result = r);
 
             Assert.IsTrue(result.success);
@@ -148,7 +148,7 @@ namespace BugCaptureSDK.Tests
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-5xx-exhaust"), null, null, r => result = r);
 
             Assert.IsFalse(result.success);
@@ -172,7 +172,7 @@ namespace BugCaptureSDK.Tests
 
             var sw = Stopwatch.StartNew();
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-retry-after"), null, null, r => result = r);
             sw.Stop();
 
@@ -196,7 +196,7 @@ namespace BugCaptureSDK.Tests
             string bigLogs = sb.ToString();
             Assert.Greater(Encoding.UTF8.GetByteCount(bigLogs), 512, "precondition: logs exceed the cap");
 
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-logcap"), null, bigLogs, null);
 
             string uploaded = _server.LastRequest.LogsText;
@@ -214,10 +214,10 @@ namespace BugCaptureSDK.Tests
             _config.endpoint = _server.Endpoint;
 
             // Over the cap and not a decodable image, so it can't be downscaled — it must be dropped
-            // rather than shipped and rejected by the backend with FILE_TOO_LARGE.
+            // rather than shipped and rejected by the backend with PAYLOAD_TOO_LARGE.
             byte[] junk = new byte[256];
 
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-shotcap"), junk, null, null);
 
             Assert.AreEqual(1, _server.RequestCount);
@@ -235,7 +235,7 @@ namespace BugCaptureSDK.Tests
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-401"), null, null, r => result = r);
 
             Assert.IsFalse(result.success);
@@ -253,7 +253,7 @@ namespace BugCaptureSDK.Tests
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-400"), null, null, r => result = r);
 
             Assert.IsFalse(result.success);
@@ -263,18 +263,18 @@ namespace BugCaptureSDK.Tests
         }
 
         [UnityTest]
-        public IEnumerator Send_FileTooLarge_MapsToFriendlyMessage()
+        public IEnumerator Send_PayloadTooLarge_MapsToFriendlyMessage()
         {
             _server = new MockReportServer().AlwaysRespondWith(Response.Json(413,
-                "{\"error\":\"FILE_TOO_LARGE\",\"message\":\"attachment exceeds limit\"}"));
+                "{\"error\":\"PAYLOAD_TOO_LARGE\",\"message\":\"attachment exceeds limit\"}"));
             _config.endpoint = _server.Endpoint;
 
             SendResult result = null;
-            yield return new BugCaptureClient(_config)
+            yield return new BugyardClient(_config)
                 .Send(NewMetadata("id-413"), null, null, r => result = r);
 
             Assert.IsFalse(result.success);
-            Assert.AreEqual(BackendErrors.FileTooLarge, result.errorCode);
+            Assert.AreEqual(BackendErrors.PayloadTooLarge, result.errorCode);
             StringAssert.Contains("too large", result.message);
             Assert.AreEqual(1, _server.RequestCount);
         }
@@ -296,7 +296,7 @@ namespace BugCaptureSDK.Tests
                 .AlwaysRespondWith(Response.Json(201, "{\"reportId\":\"r_late\",\"status\":\"created\"}"));
             _config.endpoint = _server.Endpoint;
 
-            var client = new BugCaptureClient(_config);
+            var client = new BugyardClient(_config);
 
             SendResult sendResult = null;
             yield return client.Send(NewMetadata("id-queued"), null, "queued logs", r => sendResult = r);
@@ -325,7 +325,7 @@ namespace BugCaptureSDK.Tests
             _server = new MockReportServer().AlwaysRespondWith(Response.Json(500, ""));
             _config.endpoint = _server.Endpoint;
 
-            var client = new BugCaptureClient(_config);
+            var client = new BugyardClient(_config);
 
             SendResult sendResult = null;
             yield return client.Send(NewMetadata("id-still-down"), null, null, r => sendResult = r);

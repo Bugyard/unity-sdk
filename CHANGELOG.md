@@ -10,9 +10,9 @@ All notable changes to this package are documented here. This project adheres to
 
 ### Added
 
-- Initial MVP SDK package (`com.bugcapture.sdk`).
-- `BugCapture.Init` / `Open` / `Capture` entry points.
-- `BugCaptureConfig` ScriptableObject (API key, endpoint, environment, hotkey,
+- Initial MVP SDK package (`com.bugyard.sdk`).
+- `Bugyard.Init` / `Open` / `Capture` entry points.
+- `BugyardConfig` ScriptableObject (API key, endpoint, environment, hotkey,
   capture toggles).
 - F8 hotkey overlay (minimal IMGUI) for filing a report in-game, working under any
   Active Input Handling backend (legacy Input Manager, the new Input System, or Both).
@@ -27,13 +27,13 @@ All notable changes to this package are documented here. This project adheres to
 - Client-side size enforcement before upload (configurable caps): oversized
   screenshots are progressively downscaled or dropped, logs are trimmed to their
   most recent lines, and metadata free-text is truncated so the payload never
-  exceeds the caps the backend would otherwise reject with `FILE_TOO_LARGE`.
-- Typed send result (`SendResult`) surfaced from `BugCaptureClient.Send`, exposed
-  via the optional `BugCapture.Capture(report, onResult)` callback (reportId,
+  exceeds the caps the backend would otherwise reject with `PAYLOAD_TOO_LARGE`.
+- Typed send result (`SendResult`) surfaced from `BugyardClient.Send`, exposed
+  via the optional `Bugyard.Capture(report, onResult)` callback (reportId,
   status, dashboardUrl on success; a friendly reason on failure).
 - Friendly translation of backend error responses (`{ error, message, details? }`)
   into distinct, actionable messages for each documented code (`UNAUTHORIZED`,
-  `REQUEST_NOT_VALID`, `FILE_TOO_LARGE`, `REPORT_LIMIT_EXCEEDED`, and 429 rate
+  `REQUEST_NOT_VALID`, `PAYLOAD_TOO_LARGE`, `REPORT_LIMIT_EXCEEDED`, and 429 rate
   limiting), with graceful fallbacks for unknown errors; the raw `details` value is
   preserved on `SendResult.details` for diagnostics.
 - Overlay send feedback: a success confirmation (with report ID and an "Open in
@@ -42,7 +42,7 @@ All notable changes to this package are documented here. This project adheres to
 - Overlay input isolation: optional `pauseWhileOpen` (holds `Time.timeScale` at 0 while
   the overlay is open, restoring the original scale on close/cancel) and
   `blockGameplayInput` (neutralizes legacy Input Manager axes/buttons so form text doesn't
-  reach game controls). `BugCapture.IsOverlayOpen` / `BugCapture.IsInputBlocked` expose the
+  reach game controls). `Bugyard.IsOverlayOpen` / `Bugyard.IsInputBlocked` expose the
   state for gating raw input polling in your own code.
 - Offline/failure queue: reports that fail to upload transiently (offline or a 5xx, after the
   in-process retries) are persisted to disk and retried automatically on the next launch — and
@@ -52,11 +52,11 @@ All notable changes to this package are documented here. This project adheres to
   and can be disabled with `enableOfflineQueue`. The overlay confirms a saved report
   (`SendResult.queuedForRetry`) instead of leaving the form open to be re-submitted.
 - Basic Usage sample and package documentation.
-- Editor version-sync check that errors when `BugCaptureVersion.Value` and
+- Editor version-sync check that errors when `BugyardVersion.Value` and
   `package.json#version` drift, with a Tools menu action to sync them.
-- "Send Test Report" editor action (**Tools → BugCapture → Send Test Report**) that
+- "Send Test Report" editor action (**Tools → Bugyard → Send Test Report**) that
   uploads a synthetic report with the current config to verify connectivity and auth
   end-to-end, reporting success (with a dashboard link) or a precise failure reason.
 
-[Unreleased]: https://github.com/bugcapture/bugcapture-unity/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/bugcapture/bugcapture-unity/releases/tag/v0.1.0
+[Unreleased]: https://github.com/bugyard/bugyard-unity/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/bugyard/bugyard-unity/releases/tag/v0.1.0

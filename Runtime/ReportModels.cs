@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     public enum Severity
     {
@@ -12,7 +12,7 @@ namespace BugCaptureSDK
     }
 
     /// <summary>
-    /// Caller-supplied report content. Pass to <see cref="BugCapture.Capture"/>
+    /// Caller-supplied report content. Pass to <see cref="Bugyard.Capture"/>
     /// to send a report directly without the overlay UI.
     /// </summary>
     public class ReportInput
@@ -22,7 +22,7 @@ namespace BugCaptureSDK
         public string expectedResult;
         public Severity severity = Severity.Medium;
 
-        /// <summary>Optional report category. Defaults to <see cref="BugCaptureConfig.defaultCategory"/> when empty.</summary>
+        /// <summary>Optional report category. Defaults to <see cref="BugyardConfig.defaultCategory"/> when empty.</summary>
         public string category;
 
         /// <summary>Optional reporter identity (tester id/name/email). Omitted from the payload when not set.</summary>
@@ -33,8 +33,8 @@ namespace BugCaptureSDK
     }
 
     /// <summary>
-    /// Outcome of a <see cref="BugCaptureClient.Send"/> call, surfaced to the overlay and to
-    /// callers of <see cref="BugCapture.Capture(ReportInput, System.Action{SendResult})"/>.
+    /// Outcome of a <see cref="BugyardClient.Send"/> call, surfaced to the overlay and to
+    /// callers of <see cref="Bugyard.Capture(ReportInput, System.Action{SendResult})"/>.
     /// On success carries the backend <c>reportId</c>/<c>status</c>/<c>dashboardUrl</c>; on
     /// failure carries a friendly <see cref="message"/> (and the raw <see cref="errorCode"/>).
     /// </summary>
@@ -110,7 +110,7 @@ namespace BugCaptureSDK
     }
 
     // --- Wire format (serialized by MetadataJson into the multipart "metadata" field) ---
-    // Mirrors apps/backend metadata contract (bugcapture-backend-docs/03-api-contracts.md).
+    // Mirrors apps/backend metadata contract (bugyard-backend-docs/03-api-contracts.md).
     // JsonUtility is not used for serialization because it cannot omit empty optionals.
 
     [Serializable]

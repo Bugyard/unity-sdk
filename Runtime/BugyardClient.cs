@@ -6,7 +6,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     /// <summary>
     /// Uploads a report to <c>POST {endpoint}/v1/reports</c> as multipart/form-data,
@@ -18,7 +18,7 @@ namespace BugCaptureSDK
     /// retried on a later launch via <see cref="FlushQueue"/> — the same stable
     /// <c>clientReportId</c> keeps that cross-session retry idempotent.
     /// </summary>
-    public class BugCaptureClient
+    public class BugyardClient
     {
         const int MaxAttempts = 3;
 
@@ -27,12 +27,12 @@ namespace BugCaptureSDK
         // can't be allowed to stall the session for minutes.
         const float MaxRetryAfterSeconds = 120f;
 
-        readonly BugCaptureConfig _config;
+        readonly BugyardConfig _config;
 
         // Guards against two flush passes running at once (startup flush + post-success flush).
         bool _flushing;
 
-        public BugCaptureClient(BugCaptureConfig config)
+        public BugyardClient(BugyardConfig config)
         {
             _config = config;
         }
@@ -47,7 +47,7 @@ namespace BugCaptureSDK
             ReportMetadata metadata, byte[] screenshot, string logs, Action<SendResult> onComplete = null)
         {
             // Enforce the config size caps before upload so we don't ship a payload the backend
-            // rejects with FILE_TOO_LARGE: oversized screenshots are downscaled (or dropped),
+            // rejects with PAYLOAD_TOO_LARGE: oversized screenshots are downscaled (or dropped),
             // logs are trimmed to their most recent lines, and metadata free-text is truncated.
             // The clamped artifacts are also exactly what we persist on failure, so a replay is
             // byte-identical to this attempt.
@@ -92,7 +92,7 @@ namespace BugCaptureSDK
                 List<OfflineReportQueue.Entry> entries = OfflineReportQueue.LoadAll();
                 if (entries.Count == 0) yield break;
 
-                Debug.Log($"[BugCapture] Retrying {entries.Count} queued report(s) from a previous session.");
+                Debug.Log($"[Bugyard] Retrying {entries.Count} queued report(s) from a previous session.");
 
                 foreach (OfflineReportQueue.Entry entry in entries)
                 {
@@ -102,13 +102,13 @@ namespace BugCaptureSDK
                     if (result != null && result.success)
                     {
                         OfflineReportQueue.Remove(entry.Path);
-                        Debug.Log($"[BugCapture] Delivered queued report {entry.ClientReportId} ({result.status}).");
+                        Debug.Log($"[Bugyard] Delivered queued report {entry.ClientReportId} ({result.status}).");
                     }
                     else if (result != null && ShouldPersist(result))
                     {
                         // Still transient (e.g. offline). Leave this and the rest on disk and stop;
                         // the next launch will pick up where we left off.
-                        Debug.Log("[BugCapture] Still unable to reach the server; leaving reports queued for next launch.");
+                        Debug.Log("[Bugyard] Still unable to reach the server; leaving reports queued for next launch.");
                         break;
                     }
                     else
@@ -116,7 +116,7 @@ namespace BugCaptureSDK
                         // Permanent failure — drop it so a poison report can't wedge the queue forever.
                         OfflineReportQueue.Remove(entry.Path);
                         Debug.LogWarning(
-                            $"[BugCapture] Dropping queued report {entry.ClientReportId}; it was rejected and won't be retried.");
+                            $"[Bugyard] Dropping queued report {entry.ClientReportId}; it was rejected and won't be retried.");
                     }
                 }
             }
@@ -169,18 +169,18 @@ namespace BugCaptureSDK
                     if (code >= 200 && code < 300)
                     {
                         result = SendResult.Successful(code, body);
-                        Debug.Log($"[BugCapture] Report sent ({code}). {body}");
+                        Debug.Log($"[Bugyard] Report sent ({code}). {body}");
                         break;
                     }
 
                     bool retryable = code == 0 || code == 429 || code >= 500;
                     Debug.LogWarning(
-                        $"[BugCapture] Send failed (attempt {attempt}/{MaxAttempts}, code {code}): {req.error} {body}");
+                        $"[Bugyard] Send failed (attempt {attempt}/{MaxAttempts}, code {code}): {req.error} {body}");
 
                     if (!retryable || attempt == MaxAttempts)
                     {
                         result = SendResult.Failed(code, body, req.error);
-                        Debug.LogError("[BugCapture] Giving up on report after " + attempt + " attempt(s).");
+                        Debug.LogError("[Bugyard] Giving up on report after " + attempt + " attempt(s).");
                         break;
                     }
 
@@ -191,7 +191,7 @@ namespace BugCaptureSDK
                         if (retryAfter > 0f)
                         {
                             backoffSeconds = retryAfter;
-                            Debug.Log($"[BugCapture] Server asked to retry after {backoffSeconds:0.##}s (Retry-After).");
+                            Debug.Log($"[Bugyard] Server asked to retry after {backoffSeconds:0.##}s (Retry-After).");
                         }
                     }
                 }

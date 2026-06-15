@@ -10,10 +10,10 @@
 - Unity test runner executes EditMode tests; metadata/version assertions pass.
 
 ## Implementation
-- `Tests/Editor/BugCapture.Tests.Editor.asmdef` — Editor-only test assembly (`UNITY_INCLUDE_TESTS`
+- `Tests/Editor/Bugyard.Tests.Editor.asmdef` — Editor-only test assembly (`UNITY_INCLUDE_TESTS`
   constraint, nunit + TestRunner references).
 - `MetadataCollectorTests.cs` — config/constant fields, GUID uniqueness, title/category/playerPosition
   fallbacks, reporter pass-through/omission.
 - `SeverityMappingTests.cs` — `Severity` → lowercase backend string for every enum member.
-- `BugCaptureConfigTests.cs` — pins documented `BugCaptureConfig` defaults.
-- `VersionSyncTests.cs` — asserts `BugCaptureVersion.Value` == `package.json#version`.
+- `BugyardConfigTests.cs` — pins documented `BugyardConfig` defaults.
+- `VersionSyncTests.cs` — asserts `BugyardVersion.Value` == `package.json#version`.

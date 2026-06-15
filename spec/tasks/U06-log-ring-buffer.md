@@ -3,7 +3,7 @@
 **Status:** ✅ done · **Milestone:** M1 — Capture pipeline (core) · **Depends on:** U03
 
 ## Scope
-- Thread-safe ring buffer on `Application.logMessageReceivedThreaded`, bounded by `maxLogLines` (`BugCaptureRuntime.OnLog`).
+- Thread-safe ring buffer on `Application.logMessageReceivedThreaded`, bounded by `maxLogLines` (`BugyardRuntime.OnLog`).
 - Gap: include stack traces for `Error`/`Exception` entries (currently only `[type] condition`).
 
 ## Acceptance criteria

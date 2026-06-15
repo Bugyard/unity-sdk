@@ -4,14 +4,14 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace BugCaptureSDK.Editor
+namespace BugyardSDK.Editor
 {
     /// <summary>
     /// "Send Test Report" editor action (U21): uploads a synthetic report with the current
     /// config to verify connectivity and auth end-to-end, then reports success (with a dashboard
     /// link) or a precise failure reason.
     ///
-    /// This deliberately does not reuse <see cref="BugCaptureClient.Send"/>: that path is a
+    /// This deliberately does not reuse <see cref="BugyardClient.Send"/>: that path is a
     /// coroutine that waits with <c>WaitForSeconds</c> and persists transient failures to the
     /// offline queue — neither of which belongs in an edit-mode connectivity check. Instead it
     /// builds the exact same wire payload (same metadata schema, same <c>/v1/reports</c> endpoint,
@@ -20,27 +20,27 @@ namespace BugCaptureSDK.Editor
     /// <see cref="SendResult"/> / <see cref="BackendErrors"/> so the reason matches what a player
     /// would see at runtime.
     /// </summary>
-    static class BugCaptureTestReport
+    static class BugyardTestReport
     {
         // Guards against a second invocation while a request is already in flight.
         static bool _inFlight;
 
-        [MenuItem("Tools/BugCapture/Send Test Report")]
+        [MenuItem("Tools/Bugyard/Send Test Report")]
         static void SendTestReport()
         {
             if (_inFlight)
             {
-                Debug.LogWarning("[BugCapture] A test report is already being sent; please wait for it to finish.");
+                Debug.LogWarning("[Bugyard] A test report is already being sent; please wait for it to finish.");
                 return;
             }
 
-            BugCaptureConfig config = ResolveConfig();
+            BugyardConfig config = ResolveConfig();
             if (config == null)
             {
                 EditorUtility.DisplayDialog(
-                    "BugCapture — Send Test Report",
-                    "No BugCapture config asset was found.\n\n" +
-                    "Create one via Tools ‣ BugCapture ‣ Create Config Asset, then set your API key and endpoint.",
+                    "Bugyard — Send Test Report",
+                    "No Bugyard config asset was found.\n\n" +
+                    "Create one via Tools ‣ Bugyard ‣ Create Config Asset, then set your API key and endpoint.",
                     "OK");
                 return;
             }
@@ -51,15 +51,15 @@ namespace BugCaptureSDK.Editor
             if (!IsUsableEndpoint(config.endpoint, out string endpointReason))
             {
                 EditorUtility.DisplayDialog(
-                    "BugCapture — Send Test Report",
+                    "Bugyard — Send Test Report",
                     $"Can't send a test report: the endpoint \"{config.endpoint}\" is {endpointReason}.\n\n" +
-                    "Set it to your BugCapture backend base URL (e.g. https://api.bugcapture.dev, no trailing /v1).",
+                    "Set it to your Bugyard backend base URL (e.g. https://api.bugyard.com, no trailing /v1).",
                     "OK");
                 return;
             }
 
             if (string.IsNullOrEmpty(config.apiKey) && !EditorUtility.DisplayDialog(
-                    "BugCapture — Send Test Report",
+                    "Bugyard — Send Test Report",
                     "The API key is empty, so the server will reject this report with 401 Unauthorized.\n\n" +
                     "Send it anyway to confirm the endpoint is reachable?",
                     "Send anyway", "Cancel"))
@@ -72,14 +72,14 @@ namespace BugCaptureSDK.Editor
 
         // Prefer a config the user is actively inspecting, so testing the asset you have selected
         // tests that asset; otherwise fall back to the single discovered config.
-        static BugCaptureConfig ResolveConfig()
+        static BugyardConfig ResolveConfig()
         {
-            if (Selection.activeObject is BugCaptureConfig selected)
+            if (Selection.activeObject is BugyardConfig selected)
                 return selected;
-            return BugCaptureMenu.FindExistingConfig();
+            return BugyardMenu.FindExistingConfig();
         }
 
-        static void BeginSend(BugCaptureConfig config)
+        static void BeginSend(BugyardConfig config)
         {
             string url = config.endpoint.TrimEnd('/') + "/v1/reports";
 
@@ -96,19 +96,19 @@ namespace BugCaptureSDK.Editor
             req.SetRequestHeader("Authorization", "Bearer " + config.apiKey);
 
             _inFlight = true;
-            Debug.Log($"[BugCapture] Sending a test report to {url} (clientReportId={metadata.clientReportId}).");
+            Debug.Log($"[Bugyard] Sending a test report to {url} (clientReportId={metadata.clientReportId}).");
 
             UnityWebRequestAsyncOperation op = req.SendWebRequest();
             EditorApplication.update += new Poller(req, op).Tick;
         }
 
-        static ReportInput BuildTestInput(BugCaptureConfig config)
+        static ReportInput BuildTestInput(BugyardConfig config)
         {
             return new ReportInput
             {
-                title = "BugCapture connectivity test",
+                title = "Bugyard connectivity test",
                 description =
-                    "Synthetic report sent from the Unity Editor via Tools ‣ BugCapture ‣ Send Test Report " +
+                    "Synthetic report sent from the Unity Editor via Tools ‣ Bugyard ‣ Send Test Report " +
                     "to verify connectivity and authentication. Safe to ignore or delete.",
                 severity = Severity.Low,
                 category = config.defaultCategory,
@@ -134,7 +134,7 @@ namespace BugCaptureSDK.Editor
                 if (!_op.isDone)
                 {
                     EditorUtility.DisplayProgressBar(
-                        "BugCapture", "Sending a test report…", Mathf.Clamp01(_op.progress));
+                        "Bugyard", "Sending a test report…", Mathf.Clamp01(_op.progress));
                     return;
                 }
 
@@ -170,20 +170,20 @@ namespace BugCaptureSDK.Editor
                 if (!string.IsNullOrEmpty(ok.reportId)) details.Append($"Report ID: {ok.reportId}\n");
                 details.Append($"HTTP {code}");
 
-                Debug.Log($"[BugCapture] Test report succeeded (HTTP {code}). reportId={ok.reportId} status={ok.status} url={ok.dashboardUrl}");
+                Debug.Log($"[Bugyard] Test report succeeded (HTTP {code}). reportId={ok.reportId} status={ok.status} url={ok.dashboardUrl}");
 
                 bool hasLink = !string.IsNullOrEmpty(ok.dashboardUrl);
                 if (hasLink)
                 {
                     if (EditorUtility.DisplayDialog(
-                            "BugCapture — Test Report Sent", details.ToString(), "Open Dashboard", "Close"))
+                            "Bugyard — Test Report Sent", details.ToString(), "Open Dashboard", "Close"))
                     {
                         Application.OpenURL(ok.dashboardUrl);
                     }
                 }
                 else
                 {
-                    EditorUtility.DisplayDialog("BugCapture — Test Report Sent", details.ToString(), "Close");
+                    EditorUtility.DisplayDialog("Bugyard — Test Report Sent", details.ToString(), "Close");
                 }
                 return;
             }
@@ -194,9 +194,9 @@ namespace BugCaptureSDK.Editor
                 ? $"HTTP {code}" + (string.IsNullOrEmpty(failed.errorCode) ? "" : $" ({failed.errorCode})")
                 : "no response (network/transport error)";
 
-            Debug.LogError($"[BugCapture] Test report failed [{codeLine}]: {reason}");
+            Debug.LogError($"[Bugyard] Test report failed [{codeLine}]: {reason}");
             EditorUtility.DisplayDialog(
-                "BugCapture — Test Report Failed",
+                "Bugyard — Test Report Failed",
                 $"{reason}\n\n{codeLine}",
                 "OK");
         }

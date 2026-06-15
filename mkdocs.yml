@@ -1,0 +1,78 @@
+site_name: Bugyard Unity SDK
+site_description: >-
+  Capture screenshots, logs, scene name, player position, build version and
+  device info from Unity playtests and send them to your Bugyard dashboard.
+site_url: https://bugyard.github.io/bugyard-unity/
+repo_name: bugyard/bugyard-unity
+repo_url: https://github.com/bugyard/bugyard-unity
+edit_uri: edit/main/docs/
+copyright: Bugyard — MIT licensed
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.sections
+    - toc.follow
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Quick start: quick-start.md
+  - API reference: api-reference.md
+  - Configuration: configuration.md
+  - What gets sent: what-gets-sent.md
+  - Releasing: releasing.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path:
+        - .
+      check_paths: true
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/bugyard/bugyard-unity

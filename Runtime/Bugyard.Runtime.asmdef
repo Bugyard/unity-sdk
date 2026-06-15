@@ -1,6 +1,6 @@
 {
-  "name": "BugCapture.Runtime",
-  "rootNamespace": "BugCaptureSDK",
+  "name": "Bugyard.Runtime",
+  "rootNamespace": "BugyardSDK",
   "references": [
     "Unity.InputSystem"
   ],

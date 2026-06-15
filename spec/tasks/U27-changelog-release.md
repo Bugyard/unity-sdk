@@ -1,6 +1,6 @@
 # U27 — CHANGELOG + tagged release
 
-**Status:** ⬜ todo · **Milestone:** M7 — Docs, samples, release · **Depends on:** U01, U02
+**Status:** ✅ done · **Milestone:** M7 — Docs, samples, release · **Depends on:** U01, U02
 
 ## Scope
 - Fill `CHANGELOG.md` for the release; verify semver; tag; confirm UPM git install of the tag works.

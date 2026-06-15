@@ -4,16 +4,16 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     /// <summary>
     /// On-disk store for reports that failed to upload (e.g. while offline). The already-clamped
     /// wire artifacts — metadata JSON, screenshot PNG and logs — are persisted under
-    /// <c>{persistentDataPath}/BugCapture/queue</c>, one file per report, so a later launch can
+    /// <c>{persistentDataPath}/Bugyard/queue</c>, one file per report, so a later launch can
     /// replay them. The original <c>clientReportId</c> is preserved, so a replay the backend
     /// already received is deduplicated idempotently rather than creating a duplicate.
     ///
-    /// The queue is bounded by <see cref="BugCaptureConfig.maxQueuedReports"/>; when full, the
+    /// The queue is bounded by <see cref="BugyardConfig.maxQueuedReports"/>; when full, the
     /// oldest report is dropped to make room. Every method is tolerant of I/O failures and never
     /// throws into the upload path — a queue problem must never break sending or the game.
     /// </summary>
@@ -48,7 +48,7 @@ namespace BugCaptureSDK
             public long EnqueuedAtUtcTicks;
         }
 
-        static string Root => Path.Combine(Application.persistentDataPath, "BugCapture", "queue");
+        static string Root => Path.Combine(Application.persistentDataPath, "Bugyard", "queue");
 
         /// <summary>
         /// Persist a failed report so it can be retried on a later launch. Enforces the configured
@@ -57,7 +57,7 @@ namespace BugCaptureSDK
         /// Returns true if the report was written; false (with a warning) on any I/O error.
         /// </summary>
         public static bool Enqueue(
-            BugCaptureConfig config, string metadataJson, byte[] screenshot, string logs, string clientReportId)
+            BugyardConfig config, string metadataJson, byte[] screenshot, string logs, string clientReportId)
         {
             if (string.IsNullOrEmpty(metadataJson) || string.IsNullOrEmpty(clientReportId)) return false;
 
@@ -101,7 +101,7 @@ namespace BugCaptureSDK
             }
             catch (Exception e)
             {
-                Debug.LogWarning("[BugCapture] Could not persist report for offline retry: " + e.Message);
+                Debug.LogWarning("[Bugyard] Could not persist report for offline retry: " + e.Message);
                 return false;
             }
         }
@@ -125,7 +125,7 @@ namespace BugCaptureSDK
                         var env = JsonUtility.FromJson<Envelope>(File.ReadAllText(path, Encoding.UTF8));
                         if (env == null || env.version != SchemaVersion || string.IsNullOrEmpty(env.metadataBase64))
                         {
-                            Debug.LogWarning("[BugCapture] Dropping an unrecognized queued report: " + Path.GetFileName(path));
+                            Debug.LogWarning("[Bugyard] Dropping an unrecognized queued report: " + Path.GetFileName(path));
                             SafeDelete(path);
                             continue;
                         }
@@ -144,14 +144,14 @@ namespace BugCaptureSDK
                     }
                     catch (Exception e)
                     {
-                        Debug.LogWarning("[BugCapture] Dropping an unreadable queued report: " + e.Message);
+                        Debug.LogWarning("[Bugyard] Dropping an unreadable queued report: " + e.Message);
                         SafeDelete(path);
                     }
                 }
             }
             catch (Exception e)
             {
-                Debug.LogWarning("[BugCapture] Could not read the offline report queue: " + e.Message);
+                Debug.LogWarning("[Bugyard] Could not read the offline report queue: " + e.Message);
             }
             return result;
         }
@@ -184,7 +184,7 @@ namespace BugCaptureSDK
         static void SafeDelete(string path)
         {
             try { if (File.Exists(path)) File.Delete(path); }
-            catch (Exception e) { Debug.LogWarning("[BugCapture] Could not delete a queued report file: " + e.Message); }
+            catch (Exception e) { Debug.LogWarning("[Bugyard] Could not delete a queued report file: " + e.Message); }
         }
 
         static string ToBase64(string utf8) => Convert.ToBase64String(Encoding.UTF8.GetBytes(utf8));

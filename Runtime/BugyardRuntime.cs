@@ -7,18 +7,18 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 #endif
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     /// <summary>
     /// Internal driver: listens for the hotkey, buffers logs, renders the overlay form,
-    /// captures a screenshot, and hands everything to <see cref="BugCaptureClient"/>.
-    /// Created and owned by <see cref="BugCapture"/>; not meant to be added manually.
+    /// captures a screenshot, and hands everything to <see cref="BugyardClient"/>.
+    /// Created and owned by <see cref="Bugyard"/>; not meant to be added manually.
     /// </summary>
     [DefaultExecutionOrder(-1000)]
-    public class BugCaptureRuntime : MonoBehaviour
+    public class BugyardRuntime : MonoBehaviour
     {
-        BugCaptureConfig _config;
-        BugCaptureClient _client;
+        BugyardConfig _config;
+        BugyardClient _client;
 
         readonly Queue<string> _logs = new Queue<string>();
         readonly object _logLock = new object();
@@ -65,10 +65,10 @@ namespace BugCaptureSDK
         GUIStyle _successStyle;
         GUIStyle _titleStyle;
 
-        public void Configure(BugCaptureConfig config)
+        public void Configure(BugyardConfig config)
         {
             _config = config;
-            _client = new BugCaptureClient(config);
+            _client = new BugyardClient(config);
             _categoryIndex = DefaultCategoryIndex();
 
             if (config.captureLogs)
@@ -98,7 +98,7 @@ namespace BugCaptureSDK
 
         /// <summary>
         /// Synchronously unhook from engine callbacks and close the overlay.
-        /// Idempotent. Called by <see cref="BugCapture.Shutdown"/> before the GameObject is
+        /// Idempotent. Called by <see cref="Bugyard.Shutdown"/> before the GameObject is
         /// destroyed so state is clean immediately, rather than at end of frame via OnDestroy.
         /// </summary>
         public void Teardown()
@@ -156,9 +156,9 @@ namespace BugCaptureSDK
             // before gameplay scripts poll input: axes report 0 and buttons report not-pressed
             // for the frame, so movement/action bound through the Input Manager won't react to
             // keys typed into the form. Raw Input.GetKey(...) polling can't be intercepted from
-            // here; gate that on BugCapture.IsInputBlocked in your own code instead. The new
+            // here; gate that on Bugyard.IsInputBlocked in your own code instead. The new
             // Input System has no equivalent global reset, so projects on it should likewise
-            // gate their own actions on BugCapture.IsInputBlocked.
+            // gate their own actions on Bugyard.IsInputBlocked.
             if (InputBlocked)
             {
                 Input.ResetInputAxes();
@@ -392,14 +392,14 @@ namespace BugCaptureSDK
                 tex = ScreenCapture.CaptureScreenshotAsTexture();
                 if (tex == null)
                 {
-                    Debug.LogWarning("[BugCapture] Screenshot capture returned no texture; sending report without a screenshot.");
+                    Debug.LogWarning("[Bugyard] Screenshot capture returned no texture; sending report without a screenshot.");
                     return null;
                 }
 
                 byte[] png = tex.EncodeToPNG();
                 if (png == null || png.Length == 0)
                 {
-                    Debug.LogWarning("[BugCapture] Screenshot PNG encoding produced no data; sending report without a screenshot.");
+                    Debug.LogWarning("[Bugyard] Screenshot PNG encoding produced no data; sending report without a screenshot.");
                     return null;
                 }
                 return png;

@@ -6,58 +6,58 @@ using UnityEditor.PackageManager;
 using UnityEngine;
 using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
-namespace BugCaptureSDK.Editor
+namespace BugyardSDK.Editor
 {
     /// <summary>
-    /// Single-sources the SDK version: <see cref="BugCaptureVersion.Value"/> (compiled into
+    /// Single-sources the SDK version: <see cref="BugyardVersion.Value"/> (compiled into
     /// builds and sent as <c>sdkVersion</c>) must equal <c>package.json#version</c>.
     /// Runs on editor load and logs an error if the two drift, and offers a one-click sync.
     /// </summary>
     [InitializeOnLoad]
-    static class BugCaptureVersionCheck
+    static class BugyardVersionCheck
     {
-        const string PackageName = "com.bugcapture.sdk";
+        const string PackageName = "com.bugyard.sdk";
 
-        static BugCaptureVersionCheck()
+        static BugyardVersionCheck()
         {
             // Defer so AssetDatabase is ready during domain reload / first import.
             EditorApplication.delayCall += Validate;
         }
 
-        [MenuItem("Tools/BugCapture/Check Version Sync")]
+        [MenuItem("Tools/Bugyard/Check Version Sync")]
         static void Validate()
         {
             if (!TryGetPackageVersion(out string packageVersion))
                 return; // Could not locate package.json; nothing to compare against.
 
-            if (packageVersion != BugCaptureVersion.Value)
+            if (packageVersion != BugyardVersion.Value)
             {
                 Debug.LogError(
-                    $"[BugCapture] SDK version drift: BugCaptureVersion.Value is \"{BugCaptureVersion.Value}\" " +
+                    $"[Bugyard] SDK version drift: BugyardVersion.Value is \"{BugyardVersion.Value}\" " +
                     $"but package.json#version is \"{packageVersion}\". These must match so the reported " +
-                    "sdkVersion is accurate. Run Tools/BugCapture/Sync Version from package.json to fix.");
+                    "sdkVersion is accurate. Run Tools/Bugyard/Sync Version from package.json to fix.");
             }
         }
 
-        [MenuItem("Tools/BugCapture/Sync Version from package.json")]
+        [MenuItem("Tools/Bugyard/Sync Version from package.json")]
         static void Sync()
         {
             if (!TryGetPackageVersion(out string packageVersion))
             {
-                Debug.LogError("[BugCapture] Could not locate package.json to sync the SDK version.");
+                Debug.LogError("[Bugyard] Could not locate package.json to sync the SDK version.");
                 return;
             }
 
-            if (packageVersion == BugCaptureVersion.Value)
+            if (packageVersion == BugyardVersion.Value)
             {
-                Debug.Log($"[BugCapture] SDK version already in sync ({packageVersion}).");
+                Debug.Log($"[Bugyard] SDK version already in sync ({packageVersion}).");
                 return;
             }
 
-            string scriptPath = FindAssetPath("BugCaptureVersion");
+            string scriptPath = FindAssetPath("BugyardVersion");
             if (scriptPath == null)
             {
-                Debug.LogError("[BugCapture] Could not locate BugCaptureVersion.cs to update.");
+                Debug.LogError("[Bugyard] Could not locate BugyardVersion.cs to update.");
                 return;
             }
 
@@ -70,13 +70,13 @@ namespace BugCaptureSDK.Editor
 
             if (updated == contents)
             {
-                Debug.LogError("[BugCapture] Could not find the Value constant in BugCaptureVersion.cs.");
+                Debug.LogError("[Bugyard] Could not find the Value constant in BugyardVersion.cs.");
                 return;
             }
 
             File.WriteAllText(absolutePath, updated);
             AssetDatabase.ImportAsset(scriptPath);
-            Debug.Log($"[BugCapture] Synced BugCaptureVersion.Value to {packageVersion} from package.json.");
+            Debug.Log($"[Bugyard] Synced BugyardVersion.Value to {packageVersion} from package.json.");
         }
 
         static bool TryGetPackageVersion(out string version)
@@ -84,7 +84,7 @@ namespace BugCaptureSDK.Editor
             version = null;
 
             // Preferred: resolved package metadata (works for installed UPM packages).
-            PackageInfo pkg = PackageInfo.FindForAssembly(typeof(BugCaptureVersion).Assembly);
+            PackageInfo pkg = PackageInfo.FindForAssembly(typeof(BugyardVersion).Assembly);
             if (pkg != null && !string.IsNullOrEmpty(pkg.version))
             {
                 version = pkg.version;
@@ -107,7 +107,7 @@ namespace BugCaptureSDK.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError($"[BugCapture] Failed to read package.json: {e.Message}");
+                Debug.LogError($"[Bugyard] Failed to read package.json: {e.Message}");
             }
 
             return false;
@@ -116,7 +116,7 @@ namespace BugCaptureSDK.Editor
         static string FindPackageManifestPath()
         {
             // Walk up from this editor script to the package root containing package.json.
-            string scriptPath = FindAssetPath("BugCaptureVersionCheck");
+            string scriptPath = FindAssetPath("BugyardVersionCheck");
             if (scriptPath == null)
                 return null;
 

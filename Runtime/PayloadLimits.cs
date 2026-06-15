@@ -1,12 +1,12 @@
 using System.Text;
 using UnityEngine;
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     /// <summary>
-    /// Enforces the client-side size caps from <see cref="BugCaptureConfig"/> right before
+    /// Enforces the client-side size caps from <see cref="BugyardConfig"/> right before
     /// upload, so an oversized attachment is reduced or dropped here rather than shipped and
-    /// rejected by the backend with <c>FILE_TOO_LARGE</c>:
+    /// rejected by the backend with <c>PAYLOAD_TOO_LARGE</c>:
     /// <list type="bullet">
     ///   <item>screenshots are progressively downscaled, then dropped if still too large;</item>
     ///   <item>logs are trimmed to their most recent lines (oldest dropped first);</item>
@@ -41,7 +41,7 @@ namespace BugCaptureSDK
                 if (!source.LoadImage(png))
                 {
                     Debug.LogWarning(
-                        $"[BugCapture] Screenshot is {png.Length / 1024} KB (cap {maxBytes / 1024} KB) " +
+                        $"[Bugyard] Screenshot is {png.Length / 1024} KB (cap {maxBytes / 1024} KB) " +
                         "and could not be decoded to downscale; sending the report without it.");
                     return null;
                 }
@@ -65,20 +65,20 @@ namespace BugCaptureSDK
                 if (current.Length > maxBytes)
                 {
                     Debug.LogWarning(
-                        $"[BugCapture] Screenshot still {current.Length / 1024} KB after downscaling " +
+                        $"[Bugyard] Screenshot still {current.Length / 1024} KB after downscaling " +
                         $"(cap {maxBytes / 1024} KB); sending the report without it.");
                     return null;
                 }
 
                 Debug.LogWarning(
-                    $"[BugCapture] Screenshot downscaled to {width}x{height} ({current.Length / 1024} KB) " +
+                    $"[Bugyard] Screenshot downscaled to {width}x{height} ({current.Length / 1024} KB) " +
                     $"to fit the {maxBytes / 1024} KB cap.");
                 return current;
             }
             catch (System.Exception e)
             {
                 Debug.LogWarning(
-                    "[BugCapture] Failed to downscale an oversized screenshot; sending the report without it. " + e.Message);
+                    "[Bugyard] Failed to downscale an oversized screenshot; sending the report without it. " + e.Message);
                 return null;
             }
             finally
@@ -126,12 +126,12 @@ namespace BugCaptureSDK
             byte[] all = Encoding.UTF8.GetBytes(logs);
             if (maxBytes <= 0)
             {
-                Debug.LogWarning("[BugCapture] Log size cap is non-positive; sending the report without logs.");
+                Debug.LogWarning("[Bugyard] Log size cap is non-positive; sending the report without logs.");
                 return "";
             }
             if (all.Length <= maxBytes) return logs;
 
-            const string notice = "[BugCapture] ...older log lines were trimmed to fit the upload size cap.\n";
+            const string notice = "[Bugyard] ...older log lines were trimmed to fit the upload size cap.\n";
             int noticeBytes = Encoding.UTF8.GetByteCount(notice);
             int budget = Mathf.Max(0, maxBytes - noticeBytes);
 
@@ -150,7 +150,7 @@ namespace BugCaptureSDK
 
             string kept = Encoding.UTF8.GetString(all, start, all.Length - start);
             Debug.LogWarning(
-                $"[BugCapture] Logs were {all.Length / 1024} KB (cap {maxBytes / 1024} KB); " +
+                $"[Bugyard] Logs were {all.Length / 1024} KB (cap {maxBytes / 1024} KB); " +
                 "older lines were trimmed to fit.");
             return notice + kept;
         }
@@ -183,11 +183,11 @@ namespace BugCaptureSDK
 
             if (Encoding.UTF8.GetByteCount(json) > maxBytes)
                 Debug.LogWarning(
-                    $"[BugCapture] Metadata is {Encoding.UTF8.GetByteCount(json) / 1024} KB and exceeds the " +
+                    $"[Bugyard] Metadata is {Encoding.UTF8.GetByteCount(json) / 1024} KB and exceeds the " +
                     $"{maxBytes / 1024} KB cap even after truncating free-text fields; the backend may reject it.");
             else if (trimmed)
                 Debug.LogWarning(
-                    $"[BugCapture] Metadata exceeded the {maxBytes / 1024} KB cap; free-text fields were truncated to fit.");
+                    $"[Bugyard] Metadata exceeded the {maxBytes / 1024} KB cap; free-text fields were truncated to fit.");
 
             return json;
         }

@@ -1,8 +1,8 @@
 {
-  "name": "BugCapture.Editor",
-  "rootNamespace": "BugCaptureSDK.Editor",
+  "name": "Bugyard.Editor",
+  "rootNamespace": "BugyardSDK.Editor",
   "references": [
-    "BugCapture.Runtime"
+    "Bugyard.Runtime"
   ],
   "includePlatforms": [
     "Editor"

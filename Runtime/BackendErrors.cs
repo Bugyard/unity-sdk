@@ -1,12 +1,12 @@
 using System;
 using System.Text;
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     /// <summary>
     /// Translates the backend error envelope (<c>{ error, message, details? }</c>) and the
     /// HTTP status of a failed upload into a single, friendly, actionable message safe to show
-    /// in the overlay. See the ingestion contract in bugcapture-backend-docs/03-api-contracts.md.
+    /// in the overlay. See the ingestion contract in bugyard-backend-docs/03-api-contracts.md.
     ///
     /// Documented error codes always win over the raw server <c>message</c> so each produces a
     /// distinct, actionable string; unknown codes fall back to the server message, then to a
@@ -14,10 +14,11 @@ namespace BugCaptureSDK
     /// </summary>
     public static class BackendErrors
     {
-        // Documented { error } codes (T29 / 13-unity-sdk-tasks.md "Backend contract").
+        // Documented { error } codes (see bugyard-backend-docs/03-api-contracts.md "Error codes").
         public const string Unauthorized = "UNAUTHORIZED";
         public const string RequestNotValid = "REQUEST_NOT_VALID";
-        public const string FileTooLarge = "FILE_TOO_LARGE";
+        public const string PayloadTooLarge = "PAYLOAD_TOO_LARGE";
+        public const string RateLimitExceeded = "RATE_LIMIT_EXCEEDED";
         public const string ReportLimitExceeded = "REPORT_LIMIT_EXCEEDED";
 
         /// <summary>
@@ -39,11 +40,11 @@ namespace BugCaptureSDK
             {
                 case Unauthorized:
                     return "Upload rejected: the API key is missing or invalid. " +
-                           "Check the BugCapture API key in your config.";
+                           "Check the Bugyard API key in your config.";
                 case RequestNotValid:
                     return "The report was rejected as invalid. " +
                            "Check the report fields (title, severity, category) and try again.";
-                case FileTooLarge:
+                case PayloadTooLarge:
                     return "An attachment is too large to upload. " +
                            "Try a smaller screenshot or shorter logs.";
                 case ReportLimitExceeded:
@@ -51,7 +52,7 @@ namespace BugCaptureSDK
                            "Ask the project owner to raise the quota, then try again.";
             }
 
-            if (httpStatus == 429 || code == "RATE_LIMITED" || code == "TOO_MANY_REQUESTS")
+            if (httpStatus == 429 || code == RateLimitExceeded)
                 return "Too many reports were sent recently. Please wait a moment and try again.";
 
             // 2. Clear transport failure: there is no useful body to fall back to.

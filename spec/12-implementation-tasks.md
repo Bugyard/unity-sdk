@@ -11,7 +11,7 @@ Tasks are ordered so each one is unblocked by the time you reach it. Build one v
 | Runtime / API | Node + TypeScript + **Fastify** | `@fastify/multipart`, `@fastify/rate-limit`, `@fastify/cors` |
 | DB / ORM | PostgreSQL + **Drizzle** | `drizzle-orm` + `drizzle-kit` migrations |
 | Dashboard auth | **Better Auth** | email/password + sessions, Drizzle adapter, **organization plugin** |
-| SDK auth | Custom project API keys | `bc_pk_{env}_…`, hashed, prefix lookup — hand-rolled |
+| SDK auth | Custom project API keys | `by_pk_{env}_…`, hashed, prefix lookup — hand-rolled |
 | Storage | S3-compatible | MinIO local → Cloudflare R2 / S3 prod, AWS SDK v3 |
 | Validation | **Zod** | metadata schema + env schema |
 | Logging | **pino** | secret redaction enabled |
@@ -65,7 +65,7 @@ when you run the Better Auth schema generator and align FKs accordingly.
 ## T05 — Local infra (Docker Compose)
 **Depends on:** —
 - Compose with `postgres:16` + `minio` per doc `10`.
-- Bucket bootstrap script (create `bugcapture-dev` bucket, keep private).
+- Bucket bootstrap script (create `bugyard-dev` bucket, keep private).
 - **AC:** `docker compose up` gives reachable Postgres + MinIO; bucket exists.
 
 ---
@@ -132,7 +132,7 @@ when you run the Better Auth schema generator and align FKs accordingly.
 
 ## T13 — Create SDK API key
 **Depends on:** T12
-- `POST /projects/:projectId/api-keys`: generate `bc_pk_{test|live}_…`, store `prefix` + `key_hash` (sha256 with `SDK_API_KEY_SECRET`), never the raw key.
+- `POST /projects/:projectId/api-keys`: generate `by_pk_{test|live}_…`, store `prefix` + `key_hash` (sha256 with `SDK_API_KEY_SECRET`), never the raw key.
 - Return full key **once** in response (doc `03`).
 - **AC:** key created; DB holds only hash + prefix; raw key returned exactly once.
 
@@ -194,7 +194,7 @@ when you run the Better Auth schema generator and align FKs accordingly.
 ## T21 — Multipart parsing + file limits
 **Depends on:** T01, T02
 - `@fastify/multipart`; enforce per-field byte limits (metadata 256KB, screenshot 5MB, logs 2MB, events 512KB) and allowed MIME (`image/png`, `image/jpeg`, `text/plain`, `application/json`).
-- Reject video; reject oversized early → `FILE_TOO_LARGE`.
+- Reject video; reject oversized early → `PAYLOAD_TOO_LARGE`.
 - **AC:** oversized/disallowed files rejected with structured errors before storage.
 
 ## T22 — Upgrade `POST /v1/reports` to multipart

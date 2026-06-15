@@ -4,12 +4,12 @@ using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEngine;
 
-namespace BugCaptureSDK.Tests
+namespace BugyardSDK.Tests
 {
     /// <summary>
-    /// <see cref="BugCaptureVersion.Value"/> is compiled into builds and sent as
+    /// <see cref="BugyardVersion.Value"/> is compiled into builds and sent as
     /// <c>sdkVersion</c>; it must stay in lock-step with <c>package.json#version</c>
-    /// (the same invariant BugCaptureVersionCheck enforces in the editor). This catches
+    /// (the same invariant BugyardVersionCheck enforces in the editor). This catches
     /// drift in CI before it ships an inaccurate version to the dashboard.
     /// </summary>
     public class VersionSyncTests
@@ -21,7 +21,7 @@ namespace BugCaptureSDK.Tests
         }
 
         [Test]
-        public void BugCaptureVersion_MatchesPackageJson()
+        public void BugyardVersion_MatchesPackageJson()
         {
             string packageRoot = FindPackageRoot();
             Assert.IsNotNull(packageRoot, "Could not locate package.json above the test source file.");
@@ -31,9 +31,9 @@ namespace BugCaptureSDK.Tests
 
             Assert.IsNotNull(manifest, "package.json failed to parse.");
             Assert.IsFalse(string.IsNullOrEmpty(manifest.version), "package.json#version is empty.");
-            Assert.AreEqual(manifest.version, BugCaptureVersion.Value,
-                "BugCaptureVersion.Value and package.json#version have drifted. " +
-                "Run Tools/BugCapture/Sync Version from package.json.");
+            Assert.AreEqual(manifest.version, BugyardVersion.Value,
+                "BugyardVersion.Value and package.json#version have drifted. " +
+                "Run Tools/Bugyard/Sync Version from package.json.");
         }
 
         // Walk up from this source file (resolved at compile time, so it works regardless of

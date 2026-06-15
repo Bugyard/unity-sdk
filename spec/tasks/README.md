@@ -6,7 +6,7 @@ with **status**, **scope**, **depends on**, and **acceptance criteria**.
 
 The SDK is a thin client over the backend ingestion contract: it collects context in a Unity
 build and `POST`s a multipart report to `/v1/reports`
-(see `../11-implementation-order.md` §9 and `bugcapture-backend-docs/03-api-contracts.md`).
+(see `../11-implementation-order.md` §9 and `bugyard-backend-docs/03-api-contracts.md`).
 
 **Goal (§16):** Pressing F8 in a Unity build sends a report with screenshot, logs, scene name,
 player position, and build version — visible in the dashboard.
@@ -18,12 +18,12 @@ Status legend: ✅ done · 🟡 partial · ⬜ todo
 | Concern | Value |
 |---|---|
 | Endpoint | `POST {endpoint}/v1/reports`, `multipart/form-data` |
-| Auth | `Authorization: Bearer bc_pk_{test\|live}_…` |
+| Auth | `Authorization: Bearer by_pk_{test\|live}_…` |
 | Fields | `metadata` (JSON string, required), `screenshot`/`logs`/`events` (optional) |
 | Idempotency | stable `clientReportId` → duplicate returns existing |
 | Size limits | metadata 256KB, screenshot 5MB, logs 2MB, events 512KB |
 | MIME | `image/png`, `image/jpeg`, `text/plain`, `application/json` |
-| Errors | `{ error, message, details? }`; `REQUEST_NOT_VALID`, `FILE_TOO_LARGE`, `UNAUTHORIZED`, `REPORT_LIMIT_EXCEEDED`, 429 |
+| Errors | `{ error, message, details? }`; `REQUEST_NOT_VALID`, `PAYLOAD_TOO_LARGE`, `UNAUTHORIZED`, `REPORT_LIMIT_EXCEEDED`, 429 |
 
 ## Milestones & tickets
 

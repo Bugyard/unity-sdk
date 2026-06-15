@@ -1,6 +1,6 @@
 # 11 Implementation Order
 
-This document defines the recommended backend implementation order for the BugCapture MVP.
+This document defines the recommended backend implementation order for the Bugyard MVP.
 
 The goal is to build one reliable vertical slice first:
 
@@ -108,8 +108,8 @@ DELETE /api-keys/:apiKeyId
 API key format:
 
 ```text
-bc_pk_test_xxxxxxxxxxxxxxxxxxxxxxxx
-bc_pk_live_xxxxxxxxxxxxxxxxxxxxxxxx
+by_pk_test_xxxxxxxxxxxxxxxxxxxxxxxx
+by_pk_live_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Store only:
@@ -544,7 +544,7 @@ Goal: integrate with the game only after backend contract is stable.
 
 Implement SDK modules:
 
-- BugCapture.Init
+- Bugyard.Init
 - API key config
 - report hotkey
 - overlay form
@@ -567,7 +567,7 @@ The first backend milestone is complete when this works:
 
 ```bash
 curl -X POST http://localhost:3000/v1/reports \
-  -H "Authorization: Bearer bc_pk_test_xxx" \
+  -H "Authorization: Bearer by_pk_test_xxx" \
   -F 'metadata={"clientReportId":"...","report":{"title":"I got stuck","severity":"high","category":"bug"}}' \
   -F 'screenshot=@screenshot.png' \
   -F 'logs=@player.log'

@@ -16,3 +16,6 @@ Thumbs.db
 *.csproj
 *.sln
 *.user
+
+# MkDocs docs-site build output
+/site/

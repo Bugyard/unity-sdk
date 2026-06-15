@@ -5,17 +5,17 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace BugCaptureSDK.Editor
+namespace BugyardSDK.Editor
 {
     /// <summary>
-    /// Editor-time validation for <see cref="BugCaptureConfig"/>. The same checks back the
+    /// Editor-time validation for <see cref="BugyardConfig"/>. The same checks back the
     /// custom Inspector (so misconfiguration is visible while editing) and a build pre-processor
     /// (so it's logged to the console before a build ships).
     /// </summary>
-    static class BugCaptureConfigValidation
+    static class BugyardConfigValidation
     {
-        public const string LiveKeyPrefix = "bc_pk_live_";
-        public const string KeyPrefix = "bc_pk_";
+        public const string LiveKeyPrefix = "by_pk_live_";
+        public const string KeyPrefix = "by_pk_";
 
         public readonly struct Issue
         {
@@ -30,7 +30,7 @@ namespace BugCaptureSDK.Editor
         }
 
         /// <summary>Returns every misconfiguration found on <paramref name="config"/>, in display order.</summary>
-        public static List<Issue> Validate(BugCaptureConfig config)
+        public static List<Issue> Validate(BugyardConfig config)
         {
             var issues = new List<Issue>();
             if (config == null)
@@ -42,19 +42,19 @@ namespace BugCaptureSDK.Editor
             {
                 issues.Add(new Issue(MessageType.Warning,
                     "apiKey is empty. Reports will be rejected with 401 Unauthorized. " +
-                    "Paste your bc_pk_test_… (or bc_pk_live_…) key in the Inspector."));
+                    "Paste your by_pk_test_… (or by_pk_live_…) key in the Inspector."));
             }
             else if (apiKey.StartsWith(LiveKeyPrefix))
             {
                 issues.Add(new Issue(MessageType.Warning,
-                    "A live API key (bc_pk_live_…) is stored in this asset, which is committed to source control. " +
-                    "Use a bc_pk_test_… key for development, or inject the live key at runtime via " +
-                    "BugCapture.Init(apiKey, …) so it never lands in version control."));
+                    "A live API key (by_pk_live_…) is stored in this asset, which is committed to source control. " +
+                    "Use a by_pk_test_… key for development, or inject the live key at runtime via " +
+                    "Bugyard.Init(apiKey, …) so it never lands in version control."));
             }
             else if (!apiKey.StartsWith(KeyPrefix))
             {
                 issues.Add(new Issue(MessageType.Warning,
-                    "apiKey doesn't look like a BugCapture key (expected a bc_pk_test_… or bc_pk_live_… prefix). " +
+                    "apiKey doesn't look like a Bugyard key (expected a by_pk_test_… or by_pk_live_… prefix). " +
                     "Double-check you copied the whole key."));
             }
 
@@ -62,7 +62,7 @@ namespace BugCaptureSDK.Editor
             {
                 issues.Add(new Issue(MessageType.Warning,
                     $"endpoint \"{config.endpoint}\" looks like a placeholder ({endpointReason}). " +
-                    "Set it to your BugCapture backend base URL (e.g. https://api.bugcapture.dev, no trailing /v1)."));
+                    "Set it to your Bugyard backend base URL (e.g. https://api.bugyard.com, no trailing /v1)."));
             }
 
             return issues;
@@ -106,14 +106,14 @@ namespace BugCaptureSDK.Editor
         }
     }
 
-    /// <summary>Inspector that surfaces <see cref="BugCaptureConfigValidation"/> issues above the fields.</summary>
-    [CustomEditor(typeof(BugCaptureConfig))]
-    class BugCaptureConfigEditor : UnityEditor.Editor
+    /// <summary>Inspector that surfaces <see cref="BugyardConfigValidation"/> issues above the fields.</summary>
+    [CustomEditor(typeof(BugyardConfig))]
+    class BugyardConfigEditor : UnityEditor.Editor
     {
         public override void OnInspectorGUI()
         {
-            var config = (BugCaptureConfig)target;
-            foreach (var issue in BugCaptureConfigValidation.Validate(config))
+            var config = (BugyardConfig)target;
+            foreach (var issue in BugyardConfigValidation.Validate(config))
                 EditorGUILayout.HelpBox(issue.Message, issue.Severity);
 
             DrawDefaultInspector();
@@ -121,21 +121,21 @@ namespace BugCaptureSDK.Editor
     }
 
     /// <summary>Logs config misconfiguration to the console before a build is produced.</summary>
-    class BugCaptureConfigBuildCheck : IPreprocessBuildWithReport
+    class BugyardConfigBuildCheck : IPreprocessBuildWithReport
     {
         public int callbackOrder => 0;
 
         public void OnPreprocessBuild(BuildReport report)
         {
-            foreach (string guid in AssetDatabase.FindAssets("t:BugCaptureConfig"))
+            foreach (string guid in AssetDatabase.FindAssets("t:BugyardConfig"))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                var config = AssetDatabase.LoadAssetAtPath<BugCaptureConfig>(path);
+                var config = AssetDatabase.LoadAssetAtPath<BugyardConfig>(path);
                 if (config == null)
                     continue;
 
-                foreach (var issue in BugCaptureConfigValidation.Validate(config))
-                    Debug.LogWarning($"[BugCapture] {path}: {issue.Message}", config);
+                foreach (var issue in BugyardConfigValidation.Validate(config))
+                    Debug.LogWarning($"[Bugyard] {path}: {issue.Message}", config);
             }
         }
     }

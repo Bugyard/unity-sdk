@@ -3,7 +3,7 @@
 **Status:** ✅ done · **Milestone:** M3 — Input compatibility · **Depends on:** U03
 
 ## Scope
-- `BugCapture.Open()` (overlay) and `BugCapture.Capture(ReportInput)` (headless) already exposed for custom UI / automation (`Runtime/BugCapture.cs`).
+- `Bugyard.Open()` (overlay) and `Bugyard.Capture(ReportInput)` (headless) already exposed for custom UI / automation (`Runtime/Bugyard.cs`).
 - Add usage docs/examples; ensure `Capture` works with no overlay present.
 
 ## Acceptance criteria

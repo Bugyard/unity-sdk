@@ -6,7 +6,7 @@ small self-contained tickets.
 
 The SDK is a thin client over the backend ingestion contract: it collects context in a Unity
 build and `POST`s a multipart report to `/v1/reports` (see `11-implementation-order.md` §9 and
-`bugcapture-backend-docs/03-api-contracts.md` / `04-ingestion-flow.md`).
+`bugyard-backend-docs/03-api-contracts.md` / `04-ingestion-flow.md`).
 
 Each task is a ticket: **status**, **scope**, **depends on**, **acceptance criteria (AC)**.
 Status reflects the current repo state:
@@ -24,12 +24,12 @@ Status reflects the current repo state:
 | Concern | Value | Source |
 |---|---|---|
 | Endpoint | `POST {endpoint}/v1/reports`, `multipart/form-data` | order §9 |
-| Auth | `Authorization: Bearer bc_pk_{test\|live}_…` | order §4–5 |
+| Auth | `Authorization: Bearer by_pk_{test\|live}_…` | order §4–5 |
 | Fields | `metadata` (JSON string, required), `screenshot`/`logs`/`events` (optional) | order §9 |
 | Idempotency | stable `clientReportId` → duplicate returns existing | order §6 |
 | Size limits | metadata 256KB, screenshot 5MB, logs 2MB, events 512KB | order §14 |
 | MIME | `image/png`, `image/jpeg`, `text/plain`, `application/json` | tasks T21 |
-| Errors | `{ error, message, details? }`; codes `REQUEST_NOT_VALID`, `FILE_TOO_LARGE`, `UNAUTHORIZED`, `REPORT_LIMIT_EXCEEDED`, 429 | tasks T29 |
+| Errors | `{ error, message, details? }`; codes `REQUEST_NOT_VALID`, `PAYLOAD_TOO_LARGE`, `UNAUTHORIZED`, `REPORT_LIMIT_EXCEEDED`, 429 | tasks T29 |
 
 ---
 
@@ -46,7 +46,7 @@ Status reflects the current repo state:
 
 ## U02 — Single-source the SDK version
 **Status:** 🟡 partial · **Depends on:** U01
-- `BugCaptureVersion.Value` (`Runtime/BugCaptureVersion.cs`) and `package.json#version` must match.
+- `BugyardVersion.Value` (`Runtime/BugyardVersion.cs`) and `package.json#version` must match.
 - Document/automate the sync (editor check or build step) so `sdkVersion` in metadata is never stale.
 - **AC:** bumping the version in one place is caught if the other drifts; `sdkVersion` in a sent report equals `package.json` version.
 
@@ -58,25 +58,25 @@ Status reflects the current repo state:
 
 ## U03 — Init / lifecycle / singleton
 **Status:** ✅ done · **Depends on:** —
-- `BugCapture.Init(config)` / `Init(apiKey, endpoint)` create a hidden `DontDestroyOnLoad` runtime; duplicate Init guarded; null/empty key warned (`Runtime/BugCapture.cs`).
-- Add `BugCapture.Shutdown()` to unhook log handler and destroy the runtime (for tests / re-init).
+- `Bugyard.Init(config)` / `Init(apiKey, endpoint)` create a hidden `DontDestroyOnLoad` runtime; duplicate Init guarded; null/empty key warned (`Runtime/Bugyard.cs`).
+- Add `Bugyard.Shutdown()` to unhook log handler and destroy the runtime (for tests / re-init).
 - **AC:** Init once works; second Init is ignored with a warning; Shutdown leaves a clean state so a later Init succeeds.
 
 ## U04 — Config asset
 **Status:** ✅ done · **Depends on:** —
-- `BugCaptureConfig` ScriptableObject with apiKey, endpoint, environment, hotkey, capture toggles, `maxLogLines` (`Runtime/BugCaptureConfig.cs`).
+- `BugyardConfig` ScriptableObject with apiKey, endpoint, environment, hotkey, capture toggles, `maxLogLines` (`Runtime/BugyardConfig.cs`).
 - Add tunables this list relies on: client-side size caps (screenshot/logs/metadata) and default `category`.
 - **AC:** config drives all capture behavior; new fields have tooltips and sane defaults.
 
 ## U05 — Screenshot capture
 **Status:** ✅ done · **Depends on:** U03
-- Overlay is hidden before `CaptureScreenshotAsTexture` so it isn't in the shot; PNG encoded; texture destroyed (`BugCaptureRuntime.CaptureRoutine`).
+- Overlay is hidden before `CaptureScreenshotAsTexture` so it isn't in the shot; PNG encoded; texture destroyed (`BugyardRuntime.CaptureRoutine`).
 - Verify behavior with multiple displays / non-default render pipelines; document limitations.
 - **AC:** captured PNG contains the game frame without the overlay; no leaked textures.
 
 ## U06 — Unity log capture (ring buffer)
 **Status:** 🟡 partial · **Depends on:** U03
-- Thread-safe ring buffer on `Application.logMessageReceivedThreaded`, bounded by `maxLogLines` (`BugCaptureRuntime.OnLog`).
+- Thread-safe ring buffer on `Application.logMessageReceivedThreaded`, bounded by `maxLogLines` (`BugyardRuntime.OnLog`).
 - Gap: include stack traces for `Error`/`Exception` entries (currently only `[type] condition`).
 - **AC:** logs snapshot includes recent messages with stack traces for errors; buffer never exceeds `maxLogLines`; handler unhooked on destroy.
 
@@ -94,7 +94,7 @@ Status reflects the current repo state:
 
 ## U08 — Overlay: category + expected-result fields
 **Status:** 🟡 partial · **Depends on:** U07
-- IMGUI overlay currently has title / description / severity (`BugCaptureRuntime.OnGUI`).
+- IMGUI overlay currently has title / description / severity (`BugyardRuntime.OnGUI`).
 - Add a `category` selector and an `expectedResult` field (both exist in `ReportInput`/backend schema).
 - **AC:** overlay collects title, description, expected result, severity, category and passes them through to metadata.
 
@@ -122,13 +122,13 @@ Status reflects the current repo state:
 
 ## U12 — New Input System support for the hotkey
 **Status:** ⬜ todo · **Depends on:** U03
-- `Update()` is guarded by `ENABLE_LEGACY_INPUT_MANAGER` only (`BugCaptureRuntime.Update`); projects on the new Input System get no hotkey.
+- `Update()` is guarded by `ENABLE_LEGACY_INPUT_MANAGER` only (`BugyardRuntime.Update`); projects on the new Input System get no hotkey.
 - Add an Input System path (`ENABLE_INPUT_SYSTEM`) and document the "Both" setting.
 - **AC:** F8 opens the overlay under legacy, new, and both input backends.
 
 ## U13 — Programmatic trigger API
 **Status:** ✅ done · **Depends on:** U03
-- `BugCapture.Open()` (overlay) and `BugCapture.Capture(ReportInput)` (headless) already exposed for custom UI / automation (`Runtime/BugCapture.cs`).
+- `Bugyard.Open()` (overlay) and `Bugyard.Capture(ReportInput)` (headless) already exposed for custom UI / automation (`Runtime/Bugyard.cs`).
 - Add usage docs/examples; ensure `Capture` works with no overlay present.
 - **AC:** a custom button can open the overlay or send a report without the built-in hotkey.
 
@@ -140,18 +140,18 @@ Status reflects the current repo state:
 
 ## U14 — Client-side size limits
 **Status:** ✅ done · **Depends on:** U04
-- Before upload, enforce config caps (screenshot 5MB, logs 2MB, metadata 256KB) — trim logs / drop or downscale screenshot rather than ship a payload the backend rejects with `FILE_TOO_LARGE`.
+- Before upload, enforce config caps (screenshot 5MB, logs 2MB, metadata 256KB) — trim logs / drop or downscale screenshot rather than ship a payload the backend rejects with `PAYLOAD_TOO_LARGE`.
 - **AC:** an oversized screenshot/log is reduced or dropped with a warning; metadata never exceeds 256KB.
 
 ## U15 — Surface the send result
 **Status:** 🟡 partial · **Depends on:** U03
-- `BugCaptureClient.Send` logs success/failure but returns nothing (`Runtime/BugCaptureClient.cs`).
+- `BugyardClient.Send` logs success/failure but returns nothing (`Runtime/BugyardClient.cs`).
 - Parse the response (`reportId`, `status`, `dashboardUrl`) and expose it via callback/event so the overlay (U10) and callers can react.
 - **AC:** callers receive a typed result (success + reportId/dashboardUrl, or failure + reason).
 
 ## U16 — Map backend error codes
 **Status:** ✅ done · **Depends on:** U15
-- Translate `{ error, message, details? }` codes (`REQUEST_NOT_VALID`, `FILE_TOO_LARGE`, `UNAUTHORIZED`, `REPORT_LIMIT_EXCEEDED`, 429) into friendly SDK-side messages.
+- Translate `{ error, message, details? }` codes (`REQUEST_NOT_VALID`, `PAYLOAD_TOO_LARGE`, `UNAUTHORIZED`, `REPORT_LIMIT_EXCEEDED`, 429) into friendly SDK-side messages.
 - **AC:** each documented error code produces a distinct, actionable message; unknown errors fall back gracefully.
 
 ## U17 — Offline / failure queue
@@ -162,7 +162,7 @@ Status reflects the current repo state:
 
 ## U18 — Retry/backoff + Retry-After
 **Status:** 🟡 partial · **Depends on:** U15
-- Exponential backoff over 3 attempts on transient failures (0/429/5xx) already exists (`BugCaptureClient.Send`).
+- Exponential backoff over 3 attempts on transient failures (0/429/5xx) already exists (`BugyardClient.Send`).
 - Honor the `Retry-After` header on 429 instead of fixed backoff.
 - **AC:** on 429 the client waits the server-specified interval; non-retryable errors fail fast.
 
@@ -174,13 +174,13 @@ Status reflects the current repo state:
 
 ## U19 — Config asset menu
 **Status:** ✅ done · **Depends on:** U04
-- `Tools > BugCapture > Create Config Asset` creates and pings the asset (`Editor/BugCaptureMenu.cs`).
+- `Tools > Bugyard > Create Config Asset` creates and pings the asset (`Editor/BugyardMenu.cs`).
 - Add "select existing config if present" to avoid duplicates.
 - **AC:** menu creates a config or selects the existing one; never silently makes duplicates.
 
 ## U20 — Config validation warnings
 **Status:** ⬜ todo · **Depends on:** U04
-- Editor-time warnings: empty apiKey, `bc_pk_live_` key committed to source control, placeholder endpoint.
+- Editor-time warnings: empty apiKey, `by_pk_live_` key committed to source control, placeholder endpoint.
 - **AC:** misconfiguration is flagged in the Inspector/console before a build ships.
 
 ## U21 — "Send test report" action
@@ -223,7 +223,7 @@ Status reflects the current repo state:
 
 ## U26 — Basic Usage sample
 **Status:** 🟡 partial · **Depends on:** U03
-- Verify `Samples~/BasicUsage/BugCaptureBootstrap.cs` compiles against the current API and matches the README.
+- Verify `Samples~/BasicUsage/BugyardBootstrap.cs` compiles against the current API and matches the README.
 - **AC:** importing the sample and pressing F8 sends a report with no code changes.
 
 ## U27 — CHANGELOG + tagged release

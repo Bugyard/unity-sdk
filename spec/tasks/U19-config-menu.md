@@ -3,7 +3,7 @@
 **Status:** ✅ done · **Milestone:** M5 — Editor tooling & DX · **Depends on:** U04
 
 ## Scope
-- `Tools > BugCapture > Create Config Asset` creates and pings the asset (`Editor/BugCaptureMenu.cs`).
+- `Tools > Bugyard > Create Config Asset` creates and pings the asset (`Editor/BugyardMenu.cs`).
 - Add "select existing config if present" to avoid duplicates.
 
 ## Acceptance criteria

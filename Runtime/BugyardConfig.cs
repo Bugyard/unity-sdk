@@ -1,21 +1,21 @@
 using UnityEngine;
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     /// <summary>
-    /// Configuration asset for the BugCapture SDK. Create one via
-    /// <c>Tools &gt; BugCapture &gt; Create Config Asset</c> (or
-    /// <c>Assets &gt; Create &gt; BugCapture &gt; Config</c>) and pass it to
-    /// <see cref="BugCapture.Init(BugCaptureConfig)"/>.
+    /// Configuration asset for the Bugyard SDK. Create one via
+    /// <c>Tools &gt; Bugyard &gt; Create Config Asset</c> (or
+    /// <c>Assets &gt; Create &gt; Bugyard &gt; Config</c>) and pass it to
+    /// <see cref="Bugyard.Init(BugyardConfig)"/>.
     /// </summary>
-    [CreateAssetMenu(fileName = "BugCaptureConfig", menuName = "BugCapture/Config")]
-    public class BugCaptureConfig : ScriptableObject
+    [CreateAssetMenu(fileName = "BugyardConfig", menuName = "Bugyard/Config")]
+    public class BugyardConfig : ScriptableObject
     {
-        [Tooltip("Project API key, e.g. bc_pk_test_xxx. Do NOT commit production keys to source control.")]
+        [Tooltip("Project API key, e.g. by_pk_test_xxx. Do NOT commit production keys to source control.")]
         public string apiKey = "";
 
-        [Tooltip("Base URL of the BugCapture backend (no trailing /v1).")]
-        public string endpoint = "https://api.bugcapture.dev";
+        [Tooltip("Base URL of the Bugyard backend (no trailing /v1).")]
+        public string endpoint = "https://api.bugyard.com";
 
         [Tooltip("Environment label sent with every report (e.g. development, staging, production).")]
         public string environment = "development";
@@ -36,7 +36,7 @@ namespace BugCaptureSDK
         [Tooltip("Pause the game (Time.timeScale = 0) while the report overlay is open, restoring the original scale on close. Off by default so existing pause logic isn't disturbed.")]
         public bool pauseWhileOpen = false;
 
-        [Tooltip("Block gameplay input while the overlay is open so text typed into the form doesn't reach game controls. Neutralizes legacy input axes/buttons each frame and exposes BugCapture.IsInputBlocked for cooperative gating in your own input code.")]
+        [Tooltip("Block gameplay input while the overlay is open so text typed into the form doesn't reach game controls. Neutralizes legacy input axes/buttons each frame and exposes Bugyard.IsInputBlocked for cooperative gating in your own input code.")]
         public bool blockGameplayInput = true;
 
         [Header("Defaults")]

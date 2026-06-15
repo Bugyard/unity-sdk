@@ -6,11 +6,11 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-namespace BugCaptureSDK.Tests
+namespace BugyardSDK.Tests
 {
     /// <summary>
     /// A loopback HTTP mock of <c>POST {endpoint}/v1/reports</c> for exercising
-    /// <see cref="BugCaptureClient"/> end-to-end without touching a real backend. It binds an
+    /// <see cref="BugyardClient"/> end-to-end without touching a real backend. It binds an
     /// <see cref="HttpListener"/> to a free port on <c>127.0.0.1</c>, serves a scripted sequence
     /// of responses on a background thread, and records every request it received (status line,
     /// headers, and the decoded multipart parts) for assertions.
@@ -72,7 +72,7 @@ namespace BugCaptureSDK.Tests
         readonly Thread _thread;
         volatile bool _running;
 
-        /// <summary>Base URL to assign to <see cref="BugCaptureConfig.endpoint"/> (no trailing slash).</summary>
+        /// <summary>Base URL to assign to <see cref="BugyardConfig.endpoint"/> (no trailing slash).</summary>
         public string Endpoint { get; }
 
         public MockReportServer()

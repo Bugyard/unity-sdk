@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text;
 
-namespace BugCaptureSDK
+namespace BugyardSDK
 {
     /// <summary>
     /// Serializes <see cref="ReportMetadata"/> into the exact JSON shape the backend
-    /// ingestion API expects (see bugcapture-backend-docs/03-api-contracts.md).
+    /// ingestion API expects (see bugyard-backend-docs/03-api-contracts.md).
     ///
     /// Unity's <c>JsonUtility</c> is deliberately not used here: it cannot omit fields,
     /// so a null or empty optional is emitted as <c>""</c>, which does not match the
