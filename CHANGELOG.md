@@ -8,6 +8,14 @@ All notable changes to this package are documented here. This project adheres to
 
 ### Added
 
+- Persistent game-context store: `Bugyard.SetContext(key, value)` /
+  `RemoveContext(key)` / `ClearContext()`. The SDK-wide context is merged into every
+  report's `metadata.context` (including overlay/F8 reports); per-report context passed
+  to `Capture` overrides matching keys. Bounded by `maxContextBytes`.
+- Gameplay breadcrumbs: `Bugyard.Track(name, payload?)` records recent events into a
+  bounded ring buffer (`maxBreadcrumbs`, default 300) that is captured as the
+  `events.json` attachment on the next report — so overlay reports now carry breadcrumbs
+  automatically. A caller-supplied `ReportInput.events` still overrides them.
 - Optional extra capture channels on the multipart upload, matching the backend
   ingestion contract: gameplay `events` (`events.json`), `save_state` (raw bytes or
   JSON), and a gzip `memory_dump` (`memory_dump.gz`). Supplied programmatically via

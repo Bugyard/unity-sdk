@@ -30,6 +30,20 @@ namespace BugyardSDK
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Serialize an arbitrary value (primitive, dictionary, or array/list) to JSON using the
+        /// same rules as <see cref="Serialize(IReadOnlyDictionary{string,object})"/>. Used for the
+        /// breadcrumbs <c>events.json</c> payload, whose top level is a JSON array rather than an
+        /// object. Mirrors the value handling so nested dictionaries/lists/primitives degrade the
+        /// same way (unknown types become their invariant <c>ToString()</c>, non-finite floats null).
+        /// </summary>
+        public static string SerializeValue(object value)
+        {
+            var sb = new StringBuilder();
+            WriteValue(sb, value);
+            return sb.ToString();
+        }
+
         static void WriteObject(StringBuilder sb, IReadOnlyDictionary<string, object> map)
         {
             sb.Append('{');

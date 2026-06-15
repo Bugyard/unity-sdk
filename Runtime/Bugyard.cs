@@ -105,6 +105,47 @@ namespace BugyardSDK
             _runtime.CaptureAndSend(report, onResult);
         }
 
+        /// <summary>
+        /// Set a persistent game-context value (inventory, quest flags, checkpoint id, match id,
+        /// wave number, boss phase — whatever helps reproduce a bug). The current context is merged
+        /// into every report's <c>metadata.context</c>; per-report context passed to
+        /// <see cref="Capture"/> overrides matching keys. Values may nest (dictionaries/lists/
+        /// primitives) and are bounded by <see cref="BugyardConfig.maxContextBytes"/>. Safe to call
+        /// from any thread.
+        /// </summary>
+        public static void SetContext(string key, object value)
+        {
+            if (!EnsureReadyForState()) return;
+            _runtime.SetContext(key, value);
+        }
+
+        /// <summary>Remove a persistent context key set via <see cref="SetContext"/>. No-op if absent.</summary>
+        public static void RemoveContext(string key)
+        {
+            if (!EnsureReadyForState()) return;
+            _runtime.RemoveContext(key);
+        }
+
+        /// <summary>Clear all persistent context set via <see cref="SetContext"/>.</summary>
+        public static void ClearContext()
+        {
+            if (!EnsureReadyForState()) return;
+            _runtime.ClearContext();
+        }
+
+        /// <summary>
+        /// Record a gameplay breadcrumb (e.g. "StartedBossFight", "LoadedCheckpoint"). The most
+        /// recent breadcrumbs (up to <see cref="BugyardConfig.maxBreadcrumbs"/>) are attached to the
+        /// next report as <c>events.json</c>, giving a dev the sequence of actions that led to the
+        /// bug. The optional <paramref name="payload"/> is serialized verbatim (any dictionary/list/
+        /// primitive). Safe to call from any thread.
+        /// </summary>
+        public static void Track(string name, object payload = null)
+        {
+            if (!EnsureReadyForState()) return;
+            _runtime.Track(name, payload);
+        }
+
         static bool EnsureReady()
         {
             if (_runtime == null)
@@ -113,6 +154,21 @@ namespace BugyardSDK
                 return false;
             }
             return true;
+        }
+
+        static bool _warnedStateBeforeInit;
+
+        // Quieter guard for the high-frequency state calls (SetContext/Track): warns once instead
+        // of per-call so an early call (before Init) is surfaced without flooding the console.
+        static bool EnsureReadyForState()
+        {
+            if (_runtime != null) return true;
+            if (!_warnedStateBeforeInit)
+            {
+                _warnedStateBeforeInit = true;
+                Debug.LogWarning("[Bugyard] SetContext/Track called before Init; value ignored. Call Bugyard.Init(...) first.");
+            }
+            return false;
         }
     }
 }

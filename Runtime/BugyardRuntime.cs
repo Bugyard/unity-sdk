@@ -23,6 +23,13 @@ namespace BugyardSDK
         readonly Queue<string> _logs = new Queue<string>();
         readonly object _logLock = new object();
 
+        // SDK-wide persistent game context (Bugyard.SetContext) merged into every report's
+        // metadata.context, and the recent-breadcrumbs buffer (Bugyard.Track) captured as the
+        // events.json attachment. Both are locked so they can be updated from any thread.
+        readonly Dictionary<string, object> _context = new Dictionary<string, object>();
+        readonly object _contextLock = new object();
+        BreadcrumbBuffer _breadcrumbs;
+
         // Overlay category choices. Lowercase so the selected value is the backend wire
         // value directly (see ReportBody.category); labels are capitalized for display only.
         static readonly string[] Categories = { "bug", "crash", "feedback" };
@@ -69,6 +76,7 @@ namespace BugyardSDK
         {
             _config = config;
             _client = new BugyardClient(config);
+            _breadcrumbs = new BreadcrumbBuffer(config.maxBreadcrumbs);
             _categoryIndex = DefaultCategoryIndex();
 
             if (config.captureLogs)
@@ -113,6 +121,10 @@ namespace BugyardSDK
             EndSession(); // restore time scale if we were paused
             _overlayOpen = false;
             _result = null;
+
+            // Drop accumulated context/breadcrumbs so a later Init starts from a clean slate.
+            ClearContext();
+            _breadcrumbs?.Clear();
         }
 
         void OnDestroy()
@@ -348,6 +360,41 @@ namespace BugyardSDK
             EndSession();
         }
 
+        // --- Persistent context & breadcrumbs (Bugyard.SetContext / Bugyard.Track) ---
+
+        public void SetContext(string key, object value)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+            lock (_contextLock) _context[key] = value;
+        }
+
+        public void RemoveContext(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+            lock (_contextLock) _context.Remove(key);
+        }
+
+        public void ClearContext()
+        {
+            lock (_contextLock) _context.Clear();
+        }
+
+        public void Track(string name, object payload)
+        {
+            _breadcrumbs?.Add(name, payload);
+        }
+
+        // A copy of the persistent context (null when empty) so the capture coroutine reads a
+        // stable snapshot without holding the lock while building/serializing metadata.
+        IReadOnlyDictionary<string, object> ContextSnapshot()
+        {
+            lock (_contextLock)
+            {
+                if (_context.Count == 0) return null;
+                return new Dictionary<string, object>(_context);
+            }
+        }
+
         public void CaptureAndSend(ReportInput input, Action<SendResult> onResult = null)
         {
             StartCoroutine(CaptureRoutine(input, onResult));
@@ -367,14 +414,15 @@ namespace BugyardSDK
                 screenshot = CaptureScreenshotPng();
             }
 
-            ReportMetadata metadata = MetadataCollector.Build(_config, input);
+            ReportMetadata metadata = MetadataCollector.Build(_config, input, ContextSnapshot());
             var artifacts = new ReportArtifacts
             {
                 screenshot = screenshot,
                 logs = _config.captureLogs ? LogsSnapshot() : null,
-                // Gameplay events / save state / memory dump are supplied by callers via ReportInput
-                // (the overlay form doesn't collect them); pass through whatever was set.
-                events = input.events,
+                // events.json defaults to the recorded breadcrumbs (Bugyard.Track); a caller that
+                // supplies its own events on the ReportInput overrides them. Save state / memory
+                // dump are still caller-supplied passthrough (no producer yet — see P1/P2).
+                events = input.events ?? _breadcrumbs?.ToJsonBytes(),
                 saveState = input.saveState,
                 saveStateIsJson = input.saveStateIsJson,
                 memoryDump = input.memoryDump,

@@ -56,6 +56,9 @@ namespace BugyardSDK
         [Tooltip("Max serialized free-form report context size in bytes. Oversized context is dropped (not truncated) before upload. Default 16 KB; counts within the metadata budget.")]
         public int maxContextBytes = 16 * 1024;
 
+        [Tooltip("Max number of recent breadcrumbs (Bugyard.Track) kept in memory. When full, the oldest is dropped. Captured into the events.json attachment. Default 300.")]
+        public int maxBreadcrumbs = 300;
+
         [Tooltip("Max gameplay-events (events.json) attachment size in bytes. Oversized events are dropped before upload. Default 512 KB.")]
         public int maxEventsBytes = 512 * 1024;
 
