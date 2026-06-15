@@ -1,8 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
+using Unity.Profiling;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -29,6 +32,25 @@ namespace BugyardSDK
         readonly Dictionary<string, object> _context = new Dictionary<string, object>();
         readonly object _contextLock = new object();
         BreadcrumbBuffer _breadcrumbs;
+
+        // Optional caller-registered producer of the save_state attachment
+        // (Bugyard.RegisterSaveStateProvider). Invoked during capture when save-state inclusion is
+        // enabled for the report. Null when unset; gates the overlay's "Include save state" checkbox.
+        SaveStateProvider _saveStateProvider;
+
+        // Named caller-registered producers of custom diagnostic files
+        // (Bugyard.RegisterDiagnosticFileProvider). Each is invoked during capture when diagnostic-
+        // snapshot inclusion is enabled and its bytes stored as custom/<name> in diagnostic_snapshot.zip.
+        // Locked so registration from any thread is safe against the main-thread capture snapshot.
+        readonly Dictionary<string, DiagnosticFileProvider> _diagnosticFileProviders =
+            new Dictionary<string, DiagnosticFileProvider>();
+        readonly object _diagLock = new object();
+
+        // Runtime-metric recorders (memory + render counters) sampled into runtime_metrics.json when a
+        // diagnostic snapshot is built. Created in Configure, disposed in Teardown. Counters that don't
+        // exist on a given platform/build are skipped, so a release build simply contributes fewer.
+        readonly List<KeyValuePair<string, ProfilerRecorder>> _recorders =
+            new List<KeyValuePair<string, ProfilerRecorder>>();
 
         // Overlay category choices. Lowercase so the selected value is the backend wire
         // value directly (see ReportBody.category); labels are capitalized for display only.
@@ -64,6 +86,15 @@ namespace BugyardSDK
         Severity _severity = Severity.Medium;
         int _categoryIndex;
 
+        // Overlay "Include save state" checkbox state; only shown/used when a provider is
+        // registered. Seeded from config.includeSaveStateByDefault and reset with the form.
+        bool _includeSaveState;
+
+        // Overlay "Include diagnostic snapshot" checkbox state. Seeded from
+        // config.includeDiagnosticSnapshotByDefault and reset with the form. Always shown (runtime
+        // metrics are available without any provider); custom files appear only if providers exist.
+        bool _includeDiagnosticSnapshot;
+
         // Lazily built in OnGUI (GUI.skin is only valid during a GUI pass).
         GUIStyle _counterStyle;
         GUIStyle _counterWarnStyle;
@@ -78,6 +109,10 @@ namespace BugyardSDK
             _client = new BugyardClient(config);
             _breadcrumbs = new BreadcrumbBuffer(config.maxBreadcrumbs);
             _categoryIndex = DefaultCategoryIndex();
+            _includeSaveState = config.includeSaveStateByDefault;
+            _includeDiagnosticSnapshot = config.includeDiagnosticSnapshotByDefault;
+
+            StartRecorders();
 
             if (config.captureLogs)
             {
@@ -122,9 +157,13 @@ namespace BugyardSDK
             _overlayOpen = false;
             _result = null;
 
-            // Drop accumulated context/breadcrumbs so a later Init starts from a clean slate.
+            // Drop accumulated context/breadcrumbs and the registered providers so a later Init
+            // starts from a clean slate, and release the profiler recorders.
             ClearContext();
             _breadcrumbs?.Clear();
+            _saveStateProvider = null;
+            lock (_diagLock) _diagnosticFileProviders.Clear();
+            StopRecorders();
         }
 
         void OnDestroy()
@@ -384,6 +423,145 @@ namespace BugyardSDK
             _breadcrumbs?.Add(name, payload);
         }
 
+        // Store (or clear, with null) the save-state producer invoked during capture.
+        public void RegisterSaveStateProvider(SaveStateProvider provider)
+        {
+            _saveStateProvider = provider;
+        }
+
+        // True when a save-state provider is registered; gates the overlay's "Include save state" checkbox.
+        bool HasSaveStateProvider => _saveStateProvider != null;
+
+        // Register (or remove, with a null provider) a named custom-diagnostic-file producer.
+        public void RegisterDiagnosticFileProvider(string name, DiagnosticFileProvider provider)
+        {
+            if (string.IsNullOrEmpty(name)) return;
+            lock (_diagLock)
+            {
+                if (provider == null) _diagnosticFileProviders.Remove(name);
+                else _diagnosticFileProviders[name] = provider;
+            }
+        }
+
+        // A stable copy of the registered providers so capture can invoke them without holding the
+        // lock (a provider could itself register/unregister, or take a while).
+        List<KeyValuePair<string, DiagnosticFileProvider>> DiagnosticProvidersSnapshot()
+        {
+            lock (_diagLock)
+                return new List<KeyValuePair<string, DiagnosticFileProvider>>(_diagnosticFileProviders);
+        }
+
+        // --- Diagnostic snapshot (runtime metrics + custom provider files) ---
+
+        // Start the ProfilerRecorders sampled into runtime_metrics.json. Counter values are 0/empty
+        // until a frame elapses, which it always has by capture time. Memory counters are emitted on
+        // all builds; the render counters are only populated in development builds / the editor.
+        void StartRecorders()
+        {
+            TryAddRecorder("totalUsedMemoryBytes", ProfilerCategory.Memory, "Total Used Memory");
+            TryAddRecorder("totalReservedMemoryBytes", ProfilerCategory.Memory, "Total Reserved Memory");
+            TryAddRecorder("gcUsedMemoryBytes", ProfilerCategory.Memory, "GC Used Memory");
+            TryAddRecorder("gcReservedMemoryBytes", ProfilerCategory.Memory, "GC Reserved Memory");
+            TryAddRecorder("systemUsedMemoryBytes", ProfilerCategory.Memory, "System Used Memory");
+            TryAddRecorder("drawCalls", ProfilerCategory.Render, "Draw Calls Count");
+            TryAddRecorder("setPassCalls", ProfilerCategory.Render, "SetPass Calls Count");
+            TryAddRecorder("triangles", ProfilerCategory.Render, "Triangles Count");
+            TryAddRecorder("vertices", ProfilerCategory.Render, "Vertices Count");
+        }
+
+        void TryAddRecorder(string key, ProfilerCategory category, string statName)
+        {
+            try
+            {
+                ProfilerRecorder recorder = ProfilerRecorder.StartNew(category, statName);
+                if (recorder.Valid) _recorders.Add(new KeyValuePair<string, ProfilerRecorder>(key, recorder));
+                else recorder.Dispose();
+            }
+            catch (Exception)
+            {
+                // A counter/category that doesn't exist on this platform or Unity version — skip it
+                // rather than letting a diagnostics nicety throw during Init.
+            }
+        }
+
+        void StopRecorders()
+        {
+            foreach (KeyValuePair<string, ProfilerRecorder> kv in _recorders)
+            {
+                if (kv.Value.Valid) kv.Value.Dispose();
+            }
+            _recorders.Clear();
+        }
+
+        IReadOnlyDictionary<string, object> CollectRuntimeMetrics()
+        {
+            var metrics = new Dictionary<string, object>();
+            float dt = Time.unscaledDeltaTime;
+            metrics["fps"] = dt > 0f ? Mathf.RoundToInt(1f / dt) : 0;
+            foreach (KeyValuePair<string, ProfilerRecorder> kv in _recorders)
+            {
+                if (kv.Value.Valid) metrics[kv.Key] = kv.Value.LastValue;
+            }
+            return metrics;
+        }
+
+        // Build the diagnostic_snapshot.zip for a report when inclusion is enabled, else null. The
+        // caller handles an explicit input.diagnosticSnapshot passthrough (which wins outright); here
+        // we assemble the manifest + runtime metrics + custom provider files. A provider that throws
+        // is logged and skipped so one bad provider can't fail the whole capture.
+        byte[] BuildDiagnosticSnapshot(ReportInput input)
+        {
+            bool include = input.includeDiagnosticSnapshot ?? _config.includeDiagnosticSnapshotByDefault;
+            if (!include) return null;
+
+            var customFiles = new List<KeyValuePair<string, byte[]>>();
+            foreach (KeyValuePair<string, DiagnosticFileProvider> kv in DiagnosticProvidersSnapshot())
+            {
+                try
+                {
+                    byte[] bytes = kv.Value?.Invoke();
+                    if (bytes != null && bytes.Length > 0)
+                        customFiles.Add(new KeyValuePair<string, byte[]>(kv.Key, bytes));
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Bugyard] Diagnostic file provider '{kv.Key}' threw; skipping it.\n{e}");
+                }
+            }
+
+            try
+            {
+                return DiagnosticSnapshot.Build(BuildManifest(customFiles), CollectRuntimeMetrics(), customFiles);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Bugyard] Failed to build diagnostic snapshot; sending report without it.\n{e}");
+                return null;
+            }
+        }
+
+        // The manifest.json contents: identity (sdk/engine/build/env/platform), the active scene, the
+        // capture time, and a listing of what the zip carries so a reader knows it without unzipping.
+        IReadOnlyDictionary<string, object> BuildManifest(List<KeyValuePair<string, byte[]>> customFiles)
+        {
+            var contents = new List<object> { DiagnosticSnapshot.RuntimeMetricsEntry };
+            foreach (KeyValuePair<string, byte[]> kv in customFiles)
+                contents.Add(DiagnosticSnapshot.CustomPrefix + DiagnosticSnapshot.SanitizeCustomName(kv.Key));
+
+            return new Dictionary<string, object>
+            {
+                ["sdkVersion"] = BugyardVersion.Value,
+                ["engine"] = "unity",
+                ["engineVersion"] = Application.unityVersion,
+                ["buildVersion"] = Application.version,
+                ["environment"] = _config.environment,
+                ["platform"] = Application.platform.ToString(),
+                ["scene"] = SceneManager.GetActiveScene().name,
+                ["capturedAtUtc"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                ["contents"] = contents,
+            };
+        }
+
         // A copy of the persistent context (null when empty) so the capture coroutine reads a
         // stable snapshot without holding the lock while building/serializing metadata.
         IReadOnlyDictionary<string, object> ContextSnapshot()
@@ -414,18 +592,27 @@ namespace BugyardSDK
                 screenshot = CaptureScreenshotPng();
             }
 
+            // Resolve the save_state attachment: an explicit input.saveState wins, otherwise a
+            // registered provider is invoked when inclusion is enabled for this report. A provider
+            // that throws degrades to a report without save state rather than failing the capture.
+            SaveState saveState = SaveStateResolver.Resolve(
+                input, _config.includeSaveStateByDefault, _saveStateProvider,
+                e => Debug.LogWarning($"[Bugyard] Save-state provider threw; sending report without save state.\n{e}"));
+
             ReportMetadata metadata = MetadataCollector.Build(_config, input, ContextSnapshot());
             var artifacts = new ReportArtifacts
             {
                 screenshot = screenshot,
                 logs = _config.captureLogs ? LogsSnapshot() : null,
                 // events.json defaults to the recorded breadcrumbs (Bugyard.Track); a caller that
-                // supplies its own events on the ReportInput overrides them. Save state / memory
-                // dump are still caller-supplied passthrough (no producer yet — see P1/P2).
+                // supplies its own events on the ReportInput overrides them. Save state is produced
+                // by the registered provider (or passed through verbatim). The diagnostic snapshot is
+                // built by the SDK (runtime metrics + registered provider files) when inclusion is
+                // enabled, unless the caller supplies explicit bytes, which are uploaded verbatim.
                 events = input.events ?? _breadcrumbs?.ToJsonBytes(),
-                saveState = input.saveState,
-                saveStateIsJson = input.saveStateIsJson,
-                memoryDump = input.memoryDump,
+                saveState = saveState.bytes,
+                saveStateIsJson = saveState.isJson,
+                diagnosticSnapshot = input.diagnosticSnapshot ?? BuildDiagnosticSnapshot(input),
             };
 
             SendResult sent = null;
@@ -494,6 +681,11 @@ namespace BugyardSDK
 
             const float w = 440f;
             float h = confirmationView ? (_result.success ? 210f : 240f) : (errorBanner ? 510f : 470f);
+            // The "Include save state" checkbox only appears on the form (not the confirmation view)
+            // and only when a provider is registered; reserve a row for it so nothing is clipped.
+            if (!confirmationView && HasSaveStateProvider) h += 28f;
+            // The "Include diagnostic snapshot" checkbox and its caution line always appear on the form.
+            if (!confirmationView) h += 28f + 18f;
             var rect = new Rect((Screen.width - w) * 0.5f, (Screen.height - h) * 0.5f, w, h);
             GUI.Box(rect, GUIContent.none);
 
@@ -572,6 +764,19 @@ namespace BugyardSDK
                 (int)_severity, new[] { "Low", "Medium", "High", "Critical" });
             GUILayout.Space(12);
 
+            // Only offer the save-state toggle when the game registered a provider to produce one.
+            if (HasSaveStateProvider)
+            {
+                _includeSaveState = GUILayout.Toggle(_includeSaveState, " Include save state");
+                GUILayout.Space(12);
+            }
+
+            // The diagnostic snapshot (runtime metrics + any registered custom files) is always
+            // offerable; the caution mirrors that custom providers may add game/diagnostic data.
+            _includeDiagnosticSnapshot = GUILayout.Toggle(_includeDiagnosticSnapshot, " Include diagnostic snapshot");
+            GUILayout.Label("May include game state or custom diagnostic data.", _hintStyle);
+            GUILayout.Space(12);
+
             GUILayout.BeginHorizontal();
             GUI.enabled = !_sending && !string.IsNullOrWhiteSpace(_title);
             if (GUILayout.Button(_sending ? "Sending..." : "Send"))
@@ -625,6 +830,10 @@ namespace BugyardSDK
                 expectedResult = _expectedResult,
                 severity = _severity,
                 category = Categories[_categoryIndex],
+                // The checkbox is the user's explicit choice for this report, so it overrides the
+                // config default. When no provider is registered the resolver ignores it anyway.
+                includeSaveState = _includeSaveState,
+                includeDiagnosticSnapshot = _includeDiagnosticSnapshot,
             };
             _sending = true;
             _result = null; // clear any prior failure banner while this send is in flight
@@ -654,6 +863,8 @@ namespace BugyardSDK
             _expectedResult = "";
             _severity = Severity.Medium;
             _categoryIndex = DefaultCategoryIndex();
+            _includeSaveState = _config != null && _config.includeSaveStateByDefault;
+            _includeDiagnosticSnapshot = _config != null && _config.includeDiagnosticSnapshotByDefault;
             if (!keepResult) _result = null;
         }
     }

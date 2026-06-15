@@ -48,6 +48,7 @@ nav:
   - Configuration: configuration.md
   - What gets sent: what-gets-sent.md
   - Releasing: releasing.md
+  - Manual smoke test: manual-smoke-test.md
   - Changelog: changelog.md
 
 markdown_extensions:

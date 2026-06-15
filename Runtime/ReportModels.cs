@@ -59,26 +59,47 @@ namespace BugyardSDK
         public bool saveStateIsJson;
 
         /// <summary>
-        /// Optional memory/arena dump, gzip-compressed, uploaded as the <c>memory_dump.gz</c>
-        /// attachment (<c>application/gzip</c>). Capped at <see cref="BugyardConfig.maxMemoryDumpBytes"/>.
+        /// Whether a registered save-state provider (<see cref="Bugyard.RegisterSaveStateProvider"/>)
+        /// should be invoked for this report. Null (the default) defers to
+        /// <see cref="BugyardConfig.includeSaveStateByDefault"/>. Ignored when an explicit
+        /// <see cref="saveState"/> is supplied (that always takes precedence) or when no provider
+        /// is registered.
         /// </summary>
-        public byte[] memoryDump;
+        public bool? includeSaveState;
+
+        /// <summary>
+        /// Optional explicit diagnostic-snapshot bytes (a zip), uploaded verbatim as the
+        /// <c>diagnostic_snapshot.zip</c> attachment (<c>application/zip</c>). Supplying this bypasses
+        /// the SDK's snapshot builder and takes precedence over <see cref="includeDiagnosticSnapshot"/>
+        /// and any registered <see cref="Bugyard.RegisterDiagnosticFileProvider"/> providers. Capped at
+        /// <see cref="BugyardConfig.maxDiagnosticSnapshotBytes"/>.
+        /// </summary>
+        public byte[] diagnosticSnapshot;
+
+        /// <summary>
+        /// Whether the SDK should build and attach a diagnostic snapshot for this report — a
+        /// <c>diagnostic_snapshot.zip</c> bundling runtime metrics (ProfilerRecorder) plus any files
+        /// from registered <see cref="Bugyard.RegisterDiagnosticFileProvider"/> providers. Null (the
+        /// default) defers to <see cref="BugyardConfig.includeDiagnosticSnapshotByDefault"/>. Ignored
+        /// when an explicit <see cref="diagnosticSnapshot"/> is supplied (that always takes precedence).
+        /// </summary>
+        public bool? includeDiagnosticSnapshot;
     }
 
     /// <summary>
     /// The upload-ready artifacts that accompany a report's <see cref="ReportMetadata"/> in the
     /// multipart request: the screenshot, the captured logs, and the optional gameplay events /
-    /// save-state / memory-dump blobs. Bundled so <see cref="BugyardClient"/> can pass them as one
-    /// unit and clamp each to its configured cap before upload.
+    /// save-state / diagnostic-snapshot blobs. Bundled so <see cref="BugyardClient"/> can pass them
+    /// as one unit and clamp each to its configured cap before upload.
     /// </summary>
     public class ReportArtifacts
     {
-        public byte[] screenshot;     // PNG -> screenshot.png (image/png)
-        public string logs;           // text -> player.log (text/plain)
-        public byte[] events;         // JSON -> events.json (application/json)
-        public byte[] saveState;      // -> save_state.bin (octet-stream) or save_state.json
-        public bool saveStateIsJson;  // selects the save_state MIME type and filename
-        public byte[] memoryDump;     // gzip -> memory_dump.gz (application/gzip)
+        public byte[] screenshot;        // PNG -> screenshot.png (image/png)
+        public string logs;              // text -> player.log (text/plain)
+        public byte[] events;            // JSON -> events.json (application/json)
+        public byte[] saveState;         // -> save_state.bin (octet-stream) or save_state.json
+        public bool saveStateIsJson;     // selects the save_state MIME type and filename
+        public byte[] diagnosticSnapshot; // zip -> diagnostic_snapshot.zip (application/zip); backend field "memory_dump"
     }
 
     /// <summary>

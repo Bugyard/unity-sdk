@@ -43,6 +43,12 @@ namespace BugyardSDK
         [Tooltip("Category applied to reports that don't specify one (e.g. bug, crash, feedback).")]
         public string defaultCategory = "bug";
 
+        [Tooltip("When a save-state provider is registered (Bugyard.RegisterSaveStateProvider), attach its output to reports by default. Per-report ReportInput.includeSaveState overrides this, and the overlay shows an 'Include save state' checkbox initialised to this value. Has no effect until a provider is registered. Default off.")]
+        public bool includeSaveStateByDefault = false;
+
+        [Tooltip("Build and attach a diagnostic snapshot (diagnostic_snapshot.zip: runtime metrics + any RegisterDiagnosticFileProvider files) to reports by default. Per-report ReportInput.includeDiagnosticSnapshot overrides this, and the overlay shows an 'Include diagnostic snapshot' checkbox initialised to this value. Recommended on for dev builds, off for production. Default off.")]
+        public bool includeDiagnosticSnapshotByDefault = false;
+
         [Header("Client-side size caps")]
         [Tooltip("Max screenshot size in bytes. Oversized screenshots are downscaled or dropped before upload. Default 5 MB.")]
         public int maxScreenshotBytes = 5 * 1024 * 1024;
@@ -65,8 +71,8 @@ namespace BugyardSDK
         [Tooltip("Max save-state attachment size in bytes. Oversized save state is dropped before upload. Default 10 MB.")]
         public int maxSaveStateBytes = 10 * 1024 * 1024;
 
-        [Tooltip("Max memory-dump attachment size in bytes. Oversized dumps are dropped before upload. Default 100 MB.")]
-        public int maxMemoryDumpBytes = 100 * 1024 * 1024;
+        [Tooltip("Max diagnostic-snapshot (diagnostic_snapshot.zip) attachment size in bytes. Oversized snapshots are dropped before upload. Keep this at or below the backend's MAX_MEMORY_DUMP_BYTES / MAX_DIAGNOSTIC_SNAPSHOT_BYTES or the backend will reject the upload (413). Default 25 MB.")]
+        public int maxDiagnosticSnapshotBytes = 25 * 1024 * 1024;
 
         [Header("Offline queue")]
         [Tooltip("Persist reports that fail to upload (e.g. while offline) to disk and retry them on the next launch. The stable clientReportId keeps cross-session retries idempotent, so no duplicate report is created.")]

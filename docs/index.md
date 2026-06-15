@@ -44,7 +44,8 @@ and optional diagnostic context to your Bugyard backend.
 - Automatic metadata: scene name, player position, build version, Unity version,
   SDK version, device specs, locale, timezone, and estimated FPS.
 - Optional reporter identity, free-form `context`, `events.json`, `save_state`,
-  and `memory_dump.gz` attachments for deeper diagnostics.
+  and an automatic `diagnostic_snapshot.zip` (runtime metrics + custom files) for
+  deeper diagnostics.
 - Client-side payload limits, retry handling, idempotent `clientReportId`s, and an
   offline queue for transient failures.
 - Editor tools for creating config assets, validating common mistakes, syncing

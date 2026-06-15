@@ -149,7 +149,7 @@ Bugyard.Capture(report, result =>
 ```
 
 See [API reference](api-reference.md) for every available field, including
-`context`, `events`, `saveState`, and `memoryDump`.
+`context`, `events`, `saveState`, and `includeDiagnosticSnapshot`.
 
 ## First-install troubleshooting
 

@@ -8,6 +8,16 @@ All notable changes to this package are documented here. This project adheres to
 
 ### Added
 
+- Save-state provider: `Bugyard.RegisterSaveStateProvider(SaveStateProvider)` /
+  `UnregisterSaveStateProvider()`. Register a callback that returns the current save /
+  game-state blob (`SaveState.Json` / `SaveState.Binary` / `SaveState.None`) and the SDK
+  pulls it during capture and uploads it as the `save_state` attachment — so overlay/F8
+  reports can carry a save without the caller wiring bytes onto every report. Inclusion is
+  opt-in per report via `ReportInput.includeSaveState` (`bool?`, `null` defers to config)
+  or globally via `BugyardConfig.includeSaveStateByDefault`; when a provider is registered
+  the overlay shows an "Include save state" checkbox seeded from that default. An explicit
+  `ReportInput.saveState` still takes precedence, and a provider that throws degrades to a
+  report without save state.
 - Persistent game-context store: `Bugyard.SetContext(key, value)` /
   `RemoveContext(key)` / `ClearContext()`. The SDK-wide context is merged into every
   report's `metadata.context` (including overlay/F8 reports); per-report context passed
@@ -16,26 +26,56 @@ All notable changes to this package are documented here. This project adheres to
   bounded ring buffer (`maxBreadcrumbs`, default 300) that is captured as the
   `events.json` attachment on the next report — so overlay reports now carry breadcrumbs
   automatically. A caller-supplied `ReportInput.events` still overrides them.
+- Automatic diagnostic snapshot: `Bugyard.RegisterDiagnosticFileProvider(name, provider)` /
+  `UnregisterDiagnosticFileProvider(name)`. When a report is captured with the diagnostic
+  snapshot included, the SDK builds a `diagnostic_snapshot.zip` (`application/zip`) carrying
+  a `manifest.json`, a `runtime_metrics.json` sampled from `Unity.Profiling.ProfilerRecorder`
+  (memory + render counters), and a `custom/<name>` file for each registered provider — for
+  game-specific state Unity can't surface on its own. Inclusion is opt-in per report via
+  `ReportInput.includeDiagnosticSnapshot` (`bool?`) or globally via
+  `BugyardConfig.includeDiagnosticSnapshotByDefault` (recommend on for dev builds); the
+  overlay shows an "Include diagnostic snapshot" checkbox seeded from that default. An
+  explicit `ReportInput.diagnosticSnapshot` (prebuilt zip bytes) overrides the builder. New
+  `DiagnosticSnapshot` zip builder and `DiagnosticFileProvider` delegate.
 - Optional extra capture channels on the multipart upload, matching the backend
   ingestion contract: gameplay `events` (`events.json`), `save_state` (raw bytes or
-  JSON), and a gzip `memory_dump` (`memory_dump.gz`). Supplied programmatically via
-  new `ReportInput` fields (`events`, `saveState` / `saveStateIsJson`, `memoryDump`)
-  and bundled through the new `ReportArtifacts` type.
+  JSON), and a `diagnostic_snapshot.zip`. Supplied programmatically via new `ReportInput`
+  fields (`events`, `saveState` / `saveStateIsJson`, `diagnosticSnapshot`) and bundled
+  through the new `ReportArtifacts` type. The snapshot rides the backend `memory_dump`
+  slot (no DB migration); the backend `memory_dump` MIME allowlist now also accepts
+  `application/zip`.
 - Free-form `context` object on `ReportInput` (`Dictionary<string, object>`,
   arbitrarily nested) serialized verbatim into the metadata `context` field via the
   new `ContextJson` writer.
 - Configurable client-side caps for the new payloads (`maxContextBytes` 16 KB,
-  `maxEventsBytes` 512 KB, `maxSaveStateBytes` 10 MB, `maxMemoryDumpBytes` 100 MB).
+  `maxEventsBytes` 512 KB, `maxSaveStateBytes` 10 MB, `maxDiagnosticSnapshotBytes` 25 MB).
   Oversized context and binary attachments are dropped before upload (they can't be
   truncated) so the rest of the report still sends instead of being rejected with
-  `PAYLOAD_TOO_LARGE`.
+  `PAYLOAD_TOO_LARGE`. Keep `maxDiagnosticSnapshotBytes` at or below the backend's limit.
+- CI install verification (`.github/workflows/install-verification.yml`): on every
+  push/PR the package is installed by path into a fresh empty Unity project and the
+  EditMode + PlayMode suites run against it, across a matrix of Unity versions (the
+  declared `2021.3` floor and a current LTS) and Input System present/absent, fronted
+  by a fast `.meta`-coverage pre-check. This reproduces "someone installs the package"
+  on every change and catches clean-install failures unit tests can't (missing meta
+  files, unresolved assembly references, undeclared dependencies). Requires Unity
+  license secrets — see the README "Continuous integration" section and
+  `plans/install-verification/`.
+- Manual smoke-test release gate (`docs/manual-smoke-test.md`): a short human pass
+  run before each tag that covers what headless CI can't — the overlay UX, a real
+  hotkey press under both input backends, and a live auth + endpoint round-trip via
+  **Tools → Bugyard → Send Test Report** — across the 2021.3-floor / current-LTS ×
+  Input-System-present/absent matrix on a standalone target. Results are recorded
+  in the release PR using `.github/release-smoke-test-template.md`, and the
+  `Releasing` flow now requires it before tagging.
 
 ### Notes
 
-- The IMGUI overlay still files only the report body, screenshot and logs; the new
-  attachments and `context` are sent through `Bugyard.Capture(ReportInput, ...)`.
+- The IMGUI overlay files the report body, screenshot, logs, breadcrumbs, and — via its
+  checkboxes — the save state (when a provider is registered) and the diagnostic snapshot;
+  a caller-supplied `events` attachment is sent through `Bugyard.Capture(ReportInput, ...)`.
 - The offline queue persists metadata (including `context`), screenshot and logs, but
-  intentionally does **not** persist the heavy `events` / `save_state` / `memory_dump`
+  intentionally does **not** persist the heavy `events` / `save_state` / `diagnostic_snapshot`
   blobs; an offline replay is delivered without them.
 
 ## [0.1.0] - 2026-06-15

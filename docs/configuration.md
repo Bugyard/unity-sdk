@@ -44,7 +44,10 @@ with your game.
 | `captureScreenshot` | `bool` | `true` | Capture a screenshot when a report is created. |
 | `captureLogs` | `bool` | `true` | Attach recent Unity console logs. |
 | `maxLogLines` | `int` | `500` | Recent log lines kept in the in-memory ring buffer. |
+| `maxBreadcrumbs` | `int` | `300` | Recent `Bugyard.Track` breadcrumbs kept in the in-memory ring buffer. When full, the oldest is dropped. Serialized into the `events.json` attachment unless the report supplies its own `events`. |
 | `defaultCategory` | `string` | `bug` | Category applied to reports that do not specify one. |
+| `includeSaveStateByDefault` | `bool` | `false` | When a save-state provider is registered, attach its output by default. Per-report `includeSaveState` overrides this, and the overlay's "Include save state" checkbox is seeded from it. |
+| `includeDiagnosticSnapshotByDefault` | `bool` | `false` | Build and attach a diagnostic snapshot by default (recommend on for dev builds). Per-report `includeDiagnosticSnapshot` overrides this, and the overlay's "Include diagnostic snapshot" checkbox is seeded from it. |
 
 Screenshots are captured at the end of the frame after the overlay hides itself.
 Logs are captured from Unity's log callback after `Bugyard.Init(...)` runs.
@@ -62,7 +65,7 @@ the backend would reject as too large.
 | `maxContextBytes` | `int` | `16 KB` | Oversized `context` is dropped, not truncated. |
 | `maxEventsBytes` | `int` | `512 KB` | Oversized `events` attachments are dropped. |
 | `maxSaveStateBytes` | `int` | `10 MB` | Oversized `saveState` attachments are dropped. |
-| `maxMemoryDumpBytes` | `int` | `100 MB` | Oversized `memoryDump` attachments are dropped. |
+| `maxDiagnosticSnapshotBytes` | `int` | `25 MB` | Oversized diagnostic snapshots (`diagnostic_snapshot.zip`) are dropped. Keep this at or below the backend's limit. |
 
 Non-positive caps are treated as no limit for screenshot, metadata, context, and
 binary attachments. For logs, a non-positive cap sends no logs.
@@ -75,8 +78,8 @@ binary attachments. For logs, a non-positive cap sends no logs.
 | `maxQueuedReports` | `int` | `50` | Maximum failed reports kept on disk. When full, the oldest report is dropped. |
 
 Queued reports store metadata, screenshot, and logs under the player's persistent
-data path. Large diagnostic blobs (`events`, `save_state`, `memory_dump`) are not
-persisted for replay to avoid filling player disks.
+data path. Large diagnostic blobs (`events`, `save_state`, `diagnostic_snapshot`) are
+not persisted for replay to avoid filling player disks.
 
 Permanent failures such as bad API keys, validation errors, attachment-too-large
 responses, and rate limiting are not queued.

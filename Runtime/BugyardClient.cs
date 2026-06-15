@@ -63,12 +63,12 @@ namespace BugyardSDK
             // Enforce the config size caps before upload so we don't ship a payload the backend
             // rejects with PAYLOAD_TOO_LARGE: oversized screenshots are downscaled (or dropped),
             // logs are trimmed to their most recent lines, metadata free-text is truncated, and the
-            // binary attachments (events / save state / memory dump) are dropped when over their cap.
+            // binary attachments (events / save state / diagnostic snapshot) are dropped when over their cap.
             artifacts.screenshot = PayloadLimits.ClampScreenshot(artifacts.screenshot, _config.maxScreenshotBytes);
             artifacts.logs = PayloadLimits.ClampLogs(artifacts.logs, _config.maxLogBytes);
             artifacts.events = PayloadLimits.ClampAttachment(artifacts.events, _config.maxEventsBytes, "Gameplay events");
             artifacts.saveState = PayloadLimits.ClampAttachment(artifacts.saveState, _config.maxSaveStateBytes, "Save state");
-            artifacts.memoryDump = PayloadLimits.ClampAttachment(artifacts.memoryDump, _config.maxMemoryDumpBytes, "Memory dump");
+            artifacts.diagnosticSnapshot = PayloadLimits.ClampAttachment(artifacts.diagnosticSnapshot, _config.maxDiagnosticSnapshotBytes, "Diagnostic snapshot");
             string json = PayloadLimits.ClampMetadata(metadata, _config.maxMetadataBytes);
 
             SendResult result = null;
@@ -81,7 +81,7 @@ namespace BugyardSDK
             {
                 // Only the lightweight artifacts (screenshot + logs) and the metadata — which carries
                 // the free-form context inline — are persisted for cross-session retry. The heavy
-                // diagnostic blobs (events / save state / memory dump, up to 100 MB) are intentionally
+                // diagnostic blobs (events / save state / diagnostic snapshot) are intentionally
                 // not written to disk, so an offline replay is delivered without them rather than
                 // bloating the queue. Context survives because it travels inside the metadata JSON.
                 if (OfflineReportQueue.Enqueue(_config, json, artifacts.screenshot, artifacts.logs, metadata.clientReportId))
@@ -191,9 +191,12 @@ namespace BugyardSDK
                         ? new MultipartFormFileSection("save_state", art.saveState, "save_state.json", "application/json")
                         : new MultipartFormFileSection("save_state", art.saveState, "save_state.bin", "application/octet-stream"));
                 }
-                if (art.memoryDump != null && art.memoryDump.Length > 0)
+                if (art.diagnosticSnapshot != null && art.diagnosticSnapshot.Length > 0)
                 {
-                    form.Add(new MultipartFormFileSection("memory_dump", art.memoryDump, "memory_dump.gz", "application/gzip"));
+                    // The backend slot/enum is still named "memory_dump" (no migration); only the
+                    // filename and MIME change to the repurposed diagnostic snapshot. The backend's
+                    // memory_dump MIME allowlist must include application/zip or this is rejected 415.
+                    form.Add(new MultipartFormFileSection("memory_dump", art.diagnosticSnapshot, "diagnostic_snapshot.zip", "application/zip"));
                 }
 
                 using (var req = UnityWebRequest.Post(url, form))

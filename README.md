@@ -21,7 +21,8 @@ optional diagnostic context to your Bugyard backend.
 - Automatic metadata: scene name, player position, build version, Unity version,
   SDK version, device specs, locale, timezone, and estimated FPS.
 - Optional reporter identity, free-form `context`, `events.json`, `save_state`,
-  and `memory_dump.gz` attachments for deeper diagnostics.
+  and an automatic `diagnostic_snapshot.zip` (runtime metrics + custom files) for
+  deeper diagnostics.
 - Client-side payload limits, retry handling, idempotent `clientReportId`s, and an
   offline queue for transient failures.
 - Editor tools for creating config assets, validating common mistakes, syncing
@@ -181,6 +182,10 @@ Everything lives in the `BugyardSDK` namespace. The public surface is the static
 | `Init` | `void Init(string apiKey, string endpoint = null)` | Convenience initializer for prototypes. `endpoint` defaults to `https://api.bugyard.com`. |
 | `Open` | `void Open()` | Open the built-in report overlay. No-op if already open. Logs an error if not initialized. |
 | `Capture` | `void Capture(ReportInput report, Action<SendResult> onResult = null)` | Capture and send a report headless, bypassing the overlay. |
+| `SetContext` / `RemoveContext` / `ClearContext` | `void SetContext(string key, object value)`, … | Manage persistent context merged into every report's `metadata.context`. Per-report `context` overrides matching keys. |
+| `Track` | `void Track(string name, object payload = null)` | Record a gameplay breadcrumb; the most recent (up to `maxBreadcrumbs`) are attached to the next report as `events.json`. |
+| `RegisterSaveStateProvider` / `UnregisterSaveStateProvider` | `void RegisterSaveStateProvider(SaveStateProvider provider)`, `void UnregisterSaveStateProvider()` | Register/clear a callback that produces the save/game-state blob on demand; invoked during capture when save-state inclusion is enabled. |
+| `RegisterDiagnosticFileProvider` / `UnregisterDiagnosticFileProvider` | `void RegisterDiagnosticFileProvider(string name, DiagnosticFileProvider provider)`, `void UnregisterDiagnosticFileProvider(string name)` | Register/clear a named producer of a custom file embedded as `custom/<name>` in the diagnostic snapshot. |
 | `Shutdown` | `void Shutdown()` | Tear down the SDK, unhook the log handler, and destroy the runtime. Mainly useful for tests and reinitialization. |
 | `IsInitialized` | `bool` (get) | True after `Init` and before `Shutdown`. |
 | `IsOverlayOpen` | `bool` (get) | True while the report overlay is open. |
@@ -201,7 +206,9 @@ Everything lives in the `BugyardSDK` namespace. The public surface is the static
 | `events` | `byte[]` | `null` | Optional JSON attachment uploaded as `events.json`. |
 | `saveState` | `byte[]` | `null` | Optional save/game-state attachment. |
 | `saveStateIsJson` | `bool` | `false` | Upload `saveState` as JSON instead of raw bytes. |
-| `memoryDump` | `byte[]` | `null` | Optional gzip attachment uploaded as `memory_dump.gz`. |
+| `includeSaveState` | `bool?` | `null` | Invoke the registered save-state provider for this report. `null` defers to `config.includeSaveStateByDefault`. |
+| `includeDiagnosticSnapshot` | `bool?` | `null` | Build and attach a diagnostic snapshot for this report. `null` defers to `config.includeDiagnosticSnapshotByDefault`. |
+| `diagnosticSnapshot` | `byte[]` | `null` | Optional prebuilt zip uploaded as `diagnostic_snapshot.zip`. Overrides the SDK's snapshot builder. |
 
 `ReporterInfo` carries optional `id`, `name`, and `email` strings.
 
@@ -232,16 +239,19 @@ Fields on the `BugyardConfig` asset:
 | `captureScreenshot` | `bool` | `true` | Capture a screenshot when a report is created. |
 | `captureLogs` | `bool` | `true` | Attach recent Unity console logs. |
 | `maxLogLines` | `int` | `500` | Recent log lines kept in memory. |
+| `maxBreadcrumbs` | `int` | `300` | Recent `Bugyard.Track` breadcrumbs kept in memory; oldest dropped when full. Serialized into `events.json`. |
 | `pauseWhileOpen` | `bool` | `false` | Set `Time.timeScale = 0` while the overlay is open. |
 | `blockGameplayInput` | `bool` | `true` | Block gameplay input while the overlay is open and expose `Bugyard.IsInputBlocked`. |
 | `defaultCategory` | `string` | `bug` | Category for reports that do not specify one. |
+| `includeSaveStateByDefault` | `bool` | `false` | Attach the registered save-state provider's output by default. |
 | `maxScreenshotBytes` | `int` | `5 MB` | Downscale or drop screenshots above this size. |
 | `maxLogBytes` | `int` | `2 MB` | Trim older logs above this size. |
 | `maxMetadataBytes` | `int` | `256 KB` | Cap on serialized metadata. |
 | `maxContextBytes` | `int` | `16 KB` | Drop oversized `context` before upload. |
 | `maxEventsBytes` | `int` | `512 KB` | Drop oversized `events` attachments before upload. |
 | `maxSaveStateBytes` | `int` | `10 MB` | Drop oversized `saveState` attachments before upload. |
-| `maxMemoryDumpBytes` | `int` | `100 MB` | Drop oversized `memoryDump` attachments before upload. |
+| `maxDiagnosticSnapshotBytes` | `int` | `25 MB` | Drop oversized `diagnostic_snapshot.zip` before upload. Keep at or below the backend's limit. |
+| `includeDiagnosticSnapshotByDefault` | `bool` | `false` | Build and attach a diagnostic snapshot by default (recommend on for dev builds). |
 | `enableOfflineQueue` | `bool` | `true` | Persist transient failures to disk and retry later. |
 | `maxQueuedReports` | `int` | `50` | Max failed reports kept on disk; oldest is dropped when full. |
 
@@ -255,8 +265,8 @@ A multipart `POST {endpoint}/v1/reports` with:
 - `screenshot` PNG, unless screenshot capture is disabled or the image is dropped
   by size limits.
 - `logs` text, unless log capture is disabled.
-- Optional `events`, `save_state`, and `memory_dump` attachments when supplied
-  through `ReportInput`.
+- Optional `events`, `save_state`, and `diagnostic_snapshot.zip` attachments when
+  supplied or enabled through `ReportInput` / config.
 
 Auth is `Authorization: Bearer <apiKey>`. `clientReportId` is stable across
 retries, so the backend can deduplicate repeated uploads.
@@ -269,7 +279,7 @@ player persistent data path. Queued reports are retried on the next launch and
 after the next successful send.
 
 The queue stores metadata, screenshot, and logs. Large diagnostic blobs
-(`events`, `save_state`, `memory_dump`) are not persisted to disk for replay.
+(`events`, `save_state`, `diagnostic_snapshot`) are not persisted to disk for replay.
 Permanent failures such as bad API keys, validation errors, attachment-too-large
 responses, and rate limiting are not queued.
 
@@ -286,6 +296,45 @@ responses, and rate limiting are not queued.
 - [ ] Themed UI overlay.
 - [ ] More built-in adapters for player identity and game-state collection.
 - [ ] Expanded examples for CI/release gating and self-hosted environments.
+
+## Continuous integration
+
+Two GitHub Actions workflows guard the package:
+
+- **Install verification** (`.github/workflows/install-verification.yml`) — the real
+  safety net. On every push/PR it installs this package *by path* into a fresh, empty
+  Unity project (`.github/install-harness/`) and runs the EditMode + PlayMode suites
+  against it, across a matrix of Unity versions (the `2021.3` floor and a current LTS)
+  and Input System present/absent. A fast `.meta`-coverage pre-check
+  (`.github/scripts/check-meta-coverage.sh`) fails the run in seconds if any `.cs`/
+  `.asmdef` is missing its sibling `.meta`, before the slow Unity legs start. Unlike
+  the unit tests (which run where everything is already resolved), this reproduces a
+  real consumer install and catches missing meta files, unresolved assembly references,
+  and undeclared dependencies. See [`plans/install-verification/`](plans/install-verification/).
+- **Docs** (`.github/workflows/docs.yml`) — builds and publishes the MkDocs site.
+
+CI runs headless, so it can't exercise the overlay UI, a real hotkey press, or a
+live backend round-trip. Those are covered before each release by the
+[manual smoke test](docs/manual-smoke-test.md), whose results are recorded in the
+release PR using [`.github/release-smoke-test-template.md`](.github/release-smoke-test-template.md).
+
+### Required secrets (Unity license)
+
+The Unity legs use [`game-ci`](https://game.ci), which needs a Unity license
+activated from repository secrets. Add these under **Settings → Secrets and variables
+→ Actions**:
+
+| Secret | Purpose |
+|--------|---------|
+| `UNITY_LICENSE` | Contents of the activated `.ulf` license file (Personal license). |
+| `UNITY_EMAIL` | Unity account email (for license activation). |
+| `UNITY_PASSWORD` | Unity account password. |
+
+For a Personal license, generate the `.ulf` once with the
+[game-ci activation flow](https://game.ci/docs/github/activation) and paste its full
+contents into `UNITY_LICENSE`. The Unity versions in the matrix must match an
+available [game-ci editor image](https://game.ci/docs/docker/versions) — bump them in
+the workflow's `unityVersion` list as new LTS images ship.
 
 ## Releasing
 

@@ -1,0 +1,202 @@
+name: Install verification
+
+# Proves that installing this package into a fresh, empty Unity project compiles
+# and runs — the scenario unit tests can't cover (they run where everything is
+# already resolved). See plans/install-verification/phase-2-ci.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write   # game-ci publishes the test results as a check run
+
+# A newer commit on the same ref supersedes in-flight runs.
+concurrency:
+  group: install-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast pre-step (2.4): a missing .meta fails here, in seconds, before the slow
+  # Unity legs ever start.
+  meta-coverage:
+    name: Meta-coverage guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every .cs / .asmdef has a sibling .meta
+        run: bash .github/scripts/check-meta-coverage.sh
+
+  # 3.3 — the pre-publish hygiene gate as a single script: meta coverage, declared
+  # dependencies, version+changelog sync, sample presence, package.json correctness.
+  # Needs no Unity editor, so it runs fast on every push/PR and resolves the public
+  # documentation/changelog/license URLs over the network.
+  pre-publish:
+    name: Pre-publish hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Run pre-publish checklist
+        run: python3 .github/scripts/pre-publish-check.py --check-urls
+
+  install:
+    name: Unity ${{ matrix.unityVersion }} · Input System ${{ matrix.inputSystem }}
+    needs: meta-coverage
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 2.3 — the declared floor and a current LTS catch version drift.
+        # These must match an available game-ci editor image:
+        # https://game.ci/docs/docker/versions
+        unityVersion:
+          - 2021.3.45f1
+          - 2022.3.50f1
+        # 2.3 — locks in the optional Input System behavior (Phase 1.2) so it
+        # can't silently regress in either direction.
+        inputSystem:
+          - without
+          - with
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # 2.3 — the Input-System-present leg. The asmdef defines ENABLE_INPUT_SYSTEM
+      # via versionDefines only when the package is present, so adding it here is
+      # the entire toggle. The 'without' leg leaves the manifest untouched.
+      #
+      # We also flip Active Input Handling to "Both" (activeInputHandler: 2) for
+      # this leg. Without it, both matrix legs would compile under legacy-only
+      # input (handler 0) and the new-input code path (Keyboard.current, the
+      # ENABLE_LEGACY_INPUT_MANAGER + ENABLE_INPUT_SYSTEM "both defined" case
+      # documented in BugyardRuntime.HotkeyPressed) would never be exercised in
+      # CI. "Both" compiles and activates both backends at once, which is the
+      # trickiest configuration to keep working.
+      - name: Add Input System package
+        if: matrix.inputSystem == 'with'
+        run: |
+          manifest=.github/install-harness/Packages/manifest.json
+          jq '.dependencies["com.unity.inputsystem"] = "1.7.0"' "$manifest" > "$manifest.tmp"
+          mv "$manifest.tmp" "$manifest"
+          cat "$manifest"
+          settings=.github/install-harness/ProjectSettings/ProjectSettings.asset
+          sed -i 's/^  activeInputHandler: 0/  activeInputHandler: 2/' "$settings"
+          grep 'activeInputHandler' "$settings"
+
+      # 2.2 — import the Basic Usage sample into the project so it is compiled in
+      # install context. A broken sample now fails the build.
+      - name: Import Basic Usage sample
+        run: |
+          dest=.github/install-harness/Assets/Samples/BasicUsage
+          mkdir -p "$dest"
+          cp Samples~/BasicUsage/*.cs "$dest/"
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: .github/install-harness/Library
+          key: Library-${{ matrix.unityVersion }}-${{ matrix.inputSystem }}-${{ hashFiles('.github/install-harness/Packages/manifest.json', 'Runtime/**', 'Editor/**', 'Tests/**', 'Samples~/**', 'package.json') }}
+          restore-keys: |
+            Library-${{ matrix.unityVersion }}-${{ matrix.inputSystem }}-
+            Library-${{ matrix.unityVersion }}-
+
+      # 2.1 + 2.2 — fresh project, package installed by path, run both suites.
+      # testMode: all => EditMode + PlayMode. The package's tests are discovered
+      # because it is listed under "testables" in the harness manifest. A compile
+      # or assembly-resolution error fails the run, which is the install failure
+      # we are guarding against (2.1).
+      - name: Run EditMode + PlayMode tests against the installed package
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: .github/install-harness
+          unityVersion: ${{ matrix.unityVersion }}
+          testMode: all
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Tests · ${{ matrix.unityVersion }} · IS-${{ matrix.inputSystem }}
+          artifactsPath: artifacts-${{ matrix.unityVersion }}-${{ matrix.inputSystem }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.unityVersion }}-${{ matrix.inputSystem }}
+          path: artifacts-${{ matrix.unityVersion }}-${{ matrix.inputSystem }}
+
+  # 3.1 — Unity Package Validation Suite. Catches packaging mistakes that compile
+  # fine but break distribution or trust: package.json correctness, meta coverage,
+  # naming conventions, sample layout, and version/changelog consistency. Requires a
+  # Unity editor, so it runs as a separate leg from the fast meta/lint checks.
+  package-validation:
+    name: Package Validation Suite · ${{ matrix.unityVersion }}
+    needs: meta-coverage
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        unityVersion:
+          - 2021.3.45f1
+          - 2022.3.50f1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # The validation suite is an editor-only tool; install it into the harness
+      # project (not the shipped package) so it can validate the embedded package.
+      - name: Add Package Validation Suite to the harness manifest
+        run: |
+          manifest=.github/install-harness/Packages/manifest.json
+          jq '.dependencies["com.unity.package-validation-suite"] = "0.50.0-preview.4"' "$manifest" > "$manifest.tmp"
+          mv "$manifest.tmp" "$manifest"
+          cat "$manifest"
+
+      # The batch-mode runner is kept out of Assets/ normally so the install legs
+      # (which don't install the suite) don't try to compile it. Copy it in here.
+      - name: Stage the validation runner
+        run: |
+          dest=.github/install-harness/Assets/Editor
+          mkdir -p "$dest"
+          cp .github/install-harness/validation/BugyardValidationRunner.cs "$dest/"
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: .github/install-harness/Library
+          key: Library-validation-${{ matrix.unityVersion }}-${{ hashFiles('.github/install-harness/Packages/manifest.json', 'Runtime/**', 'Editor/**', 'Samples~/**', 'package.json') }}
+          restore-keys: |
+            Library-validation-${{ matrix.unityVersion }}-
+
+      # game-ci's unity-builder is the supported way to invoke an arbitrary editor
+      # method in CI: with buildMethod set it runs `-executeMethod` and our method
+      # owns the run, calling EditorApplication.Exit with the validation result. No
+      # player is actually built — the runner exits first.
+      - name: Run the Package Validation Suite
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: .github/install-harness
+          unityVersion: ${{ matrix.unityVersion }}
+          targetPlatform: StandaloneLinux64
+          buildMethod: Bugyard.CI.BugyardValidationRunner.Run
+          allowDirtyBuild: true
+
+      - name: Upload validation report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-results-${{ matrix.unityVersion }}
+          path: .github/install-harness/Library/ValidationSuiteResults

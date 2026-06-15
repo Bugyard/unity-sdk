@@ -1,58 +1,59 @@
 # Diagnostic Snapshot — design & implementation plan
 
-> **Decision:** Nahradit „raw memory dump" za **automatic diagnostic snapshot**.
-> Ne raw memory dump, ne OS/process dump, ne Unity managed-heap dump (ten jen jako
-> advanced dev-only, viz níž). Sbírat užitečný **game-state + runtime** snapshot zevnitř hry.
+> **Decision:** Replace the "raw memory dump" with an **automatic diagnostic snapshot**.
+> Not a raw memory dump, not an OS/process dump, not a Unity managed-heap dump (that
+> only as an advanced dev-only option, see below). Collect a useful **game-state + runtime**
+> snapshot from inside the game.
 
-## Proč ne raw memory dump
-- Unity managed heap ≠ native engine memory ≠ custom allocator hry — bez spolupráce hry stejně nevíš, co dumpnout.
-- Raw dump může obsahovat tokeny, PII, save data, interní data → bezpečnostní riziko.
-- Velké, pomalé, engine-specific, pro testera nepoužitelné.
+## Why not a raw memory dump
+- Unity managed heap ≠ native engine memory ≠ the game's custom allocator — without the game's cooperation you don't know what to dump anyway.
+- A raw dump can contain tokens, PII, save data, internal data → a security risk.
+- Large, slow, engine-specific, and useless to a tester.
 
-## Architektura — hybrid (NE „všechno do jednoho zipu")
+## Architecture — hybrid (NOT "everything into one zip")
 
-Dnešní SDK + backend posílají `screenshot` / `logs` / `events` / `save_state` jako
-**samostatné typed attachmenty** a `context` v metadata. Dashboard je renderuje zvlášť.
-**Tohle zachováváme** — jen dodáváme producenty. Bundlujeme jen to, co dnes nemá slot.
+Today's SDK + backend send `screenshot` / `logs` / `events` / `save_state` as
+**separate typed attachments** and `context` in the metadata. The dashboard renders them
+separately. **We keep this** — we only add producers. We bundle only what has no slot today.
 
-| Data | Kde skončí | Dnes | Akce |
+| Data | Where it ends up | Today | Action |
 |---|---|---|---|
-| screenshot | `screenshot` attachment | ✅ | beze změny |
-| recent logs | `logs` attachment (`player.log`) | ✅ ring buffer | beze změny |
+| screenshot | `screenshot` attachment | ✅ | unchanged |
+| recent logs | `logs` attachment (`player.log`) | ✅ ring buffer | unchanged |
 | breadcrumbs | `events` attachment (`events.json`) | ⚠️ passthrough | **+ `Track()` producer** |
-| game context | metadata `context` | ⚠️ jen per-Capture | **+ persistent `SetContext` store** |
+| game context | metadata `context` | ⚠️ per-Capture only | **+ persistent `SetContext` store** |
 | save state | `save_state` attachment | ⚠️ passthrough | **+ `RegisterSaveStateProvider`** |
-| **runtime metrics + custom files** | **`diagnostic_snapshot.zip`** | ❌ | **NOVÝ slot (repurpose `memory_dump`)** |
+| **runtime metrics + custom files** | **`diagnostic_snapshot.zip`** | ❌ | **NEW slot (repurpose `memory_dump`)** |
 
-### Co je uvnitř `diagnostic_snapshot.zip`
-Jen věci bez prvotřídního slotu — aby dev nemusel rozzipovávat kvůli logu:
+### What's inside `diagnostic_snapshot.zip`
+Only things without a first-class slot — so a dev doesn't have to unzip just to read a log:
 ```
-manifest.json          # sdk ver, build, scene, timestamp, co snapshot obsahuje
-runtime_metrics.json   # ProfilerRecorder: alloc/reserved/GC mem, draw calls, tris, fps
-custom/<name>          # výstupy z RegisterDiagnosticFileProvider (advanced)
+manifest.json          # sdkVersion, engine(+Version), buildVersion, environment, platform, scene, capturedAtUtc, contents[]
+runtime_metrics.json   # ProfilerRecorder: total/reserved/GC/system mem, drawCalls, setPassCalls, triangles, vertices
+custom/<name>          # output from RegisterDiagnosticFileProvider (advanced)
 ```
-ZIP, ne gzip — v C# je `System.IO.Compression.ZipArchive` jednodušší a drží víc souborů.
+ZIP, not gzip — in C# `System.IO.Compression.ZipArchive` is simpler and holds multiple files.
 MIME `application/zip`.
 
-## Nové public API (`Bugyard.cs`)
+## New public API (`Bugyard.cs`)
 
 ```csharp
-// Persistent game context (vezme se aktuální stav při reportu → metadata.context)
+// Persistent game context (its current state is taken at report time → metadata.context)
 Bugyard.SetContext(string key, object value);
 Bugyard.RemoveContext(string key);
 Bugyard.ClearContext();
 
-// Breadcrumbs ring buffer (posledních ~200–500) → events.json
+// Breadcrumbs ring buffer (the last ~200–500) → events.json
 Bugyard.Track(string name, object payload = null);
 
-// Dev hry dodá přesně ten save, který chce → save_state attachment
-Bugyard.RegisterSaveStateProvider(Func<byte[]> provider); // + async varianta zvážit
+// The game's dev supplies exactly the save they want → save_state attachment
+Bugyard.RegisterSaveStateProvider(Func<byte[]> provider); // + consider an async variant
 
-// Advanced: libovolný custom diagnostic blob → diagnostic_snapshot.zip/custom/<name>
+// Advanced: any custom diagnostic blob → diagnostic_snapshot.zip/custom/<name>
 Bugyard.RegisterDiagnosticFileProvider(string name, Func<byte[]> provider);
 ```
 
-Capture s automatickým snapshotem:
+Capture with an automatic snapshot:
 ```csharp
 Bugyard.Capture(new ReportInput {
     title = "Softlock after respawn",
@@ -62,97 +63,99 @@ Bugyard.Capture(new ReportInput {
 
 Config:
 ```csharp
-BugyardConfig.includeDiagnosticSnapshotByDefault = false; // on jen v dev buildech
+BugyardConfig.includeDiagnosticSnapshotByDefault = false; // on only in dev builds
 BugyardConfig.maxDiagnosticSnapshotBytes = 25 * 1024 * 1024;
 BugyardConfig.maxBreadcrumbs = 300;
-BugyardConfig.maxContextBytes; // už existuje
+BugyardConfig.maxContextBytes; // already exists
 ```
 
-## Overlay (F8) checkboxy
+## Overlay (F8) checkboxes
 ```
 [x] Include screenshot      (default on)
 [x] Include logs            (default on)
 [x] Include game context    (default on)
-[ ] Include save state      (default off)  -> jen když je registrován provider
+[ ] Include save state      (default off)  -> only when a provider is registered
 [ ] Include diagnostic snapshot (default off; dev build on)
 ```
-Pod snapshotem upozornění: *"May include game state or custom diagnostic data."*
+Below the snapshot, a notice: *"May include game state or custom diagnostic data."*
 
-## Unity built-ins, které použít (ne psát ručně)
-- logs → `Application.logMessageReceived(Threaded)` ✅ už používáme
+## Unity built-ins to use (don't hand-write)
+- logs → `Application.logMessageReceived(Threaded)` ✅ already used
 - runtime metrics → `Unity.Profiling.ProfilerRecorder` (alloc/reserved/GC mem, draw calls, tris)
-- device/runtime → `SystemInfo`, `Application`, `Screen`, `QualitySettings` ✅ už používáme
-- **advanced/dev-only:** `Unity.Profiling.Memory.MemoryProfiler.TakeSnapshot(...)` za
-  `BugyardConfig.enableUnityMemoryProfilerSnapshot` → přibalit do `diagnostic_snapshot.zip/custom/`.
-  Velký/pomalý/engine-specific → NIKDY default, jen explicitní dev opt-in.
+- device/runtime → `SystemInfo`, `Application`, `Screen`, `QualitySettings` ✅ already used
+- **advanced/dev-only (NOT IMPLEMENTED, future proposal):** `Unity.Profiling.Memory.MemoryProfiler.TakeSnapshot(...)`
+  behind a proposed `BugyardConfig.enableUnityMemoryProfilerSnapshot` → bundle into `diagnostic_snapshot.zip/custom/`.
+  Large/slow/engine-specific → NEVER default, only explicit dev opt-in. Today the same can
+  be covered via `RegisterDiagnosticFileProvider`. See "Explicitly out of scope" below.
 
-Co Unity NEdá a musíme přes provider/SetContext: quest flags, inventory, checkpoint,
-AI state, current wave, seed, save slot, match id — game-specific stav.
+What Unity does NOT give us and we must get via a provider/SetContext: quest flags, inventory,
+checkpoint, AI state, current wave, seed, save slot, match id — game-specific state.
 
-## Backend změny (malé)
-- MIME allowlist: k `memory_dump`/novému slotu přidat `application/zip`.
-- Pojmenování: v UI/SDK používat **`diagnostic_snapshot`**. DB enum může zůstat `memory_dump`
-  (žádná migrace), NEBO čistší dlouhodobě:
+## Backend changes (small)
+- MIME allowlist: add `application/zip` to the `memory_dump`/new slot.
+- Naming: use **`diagnostic_snapshot`** in the UI/SDK. The DB enum can stay `memory_dump`
+  (no migration), OR cleaner long-term:
   `screenshot | logs | events | save_state | diagnostic_snapshot | custom`.
-- Limit: `MAX_DIAGNOSTIC_SNAPSHOT_BYTES` (sjednotit se SDK `maxDiagnosticSnapshotBytes`).
-  > ⚠️ Pozor: SDK limit MUSÍ být ≤ backend limit, jinak SDK pošle blob, co backend odmítne 413.
+- Limit: `MAX_DIAGNOSTIC_SNAPSHOT_BYTES` (keep it in sync with the SDK's `maxDiagnosticSnapshotBytes`).
+  > ⚠️ Note: the SDK limit MUST be ≤ the backend limit, otherwise the SDK sends a blob the backend rejects with 413.
 
-## Implementační pořadí (fáze)
-1. ✅ **Context store** — `SetContext/RemoveContext/ClearContext`, persistent v `BugyardRuntime`, merge s `ReportInput.context` při Capture (per-report vyhrává), bounded `maxContextBytes`. **HOTOVO.**
-2. ✅ **Breadcrumbs** — `Track()` ring buffer (`maxBreadcrumbs` default 300), serialize → `events.json` (když caller nedodá vlastní `events`). Overlay/F8 je teď posílá automaticky. **HOTOVO.**
-3. **Snapshot builder** — `ZipArchive`: `manifest.json` + `runtime_metrics.json` (ProfilerRecorder) + `custom/*`. Repurpose `memory_dump` slot → `diagnostic_snapshot.zip`, MIME `application/zip`.
-4. **Save state provider** — `RegisterSaveStateProvider`, zavolat při Capture když `includeSaveState`.
-5. **Diagnostic file provider** — `RegisterDiagnosticFileProvider` → `custom/*` v zipu.
-6. **Overlay checkboxy** + defaults (dev build snapshot on).
-7. **Backend** — `application/zip` MIME (+ příp. enum rename/migrace), limit env.
-8. **Testy** — ✅ context merge + breadcrumb cap (Editmode); zbývá zip obsah/limit, provider volání, e2e proti backendu.
+## Implementation order (phases)
+1. ✅ **Context store** — `SetContext/RemoveContext/ClearContext`, persistent in `BugyardRuntime`, merged with `ReportInput.context` at Capture (per-report wins), bounded by `maxContextBytes`. **DONE.**
+2. ✅ **Breadcrumbs** — `Track()` ring buffer (`maxBreadcrumbs` default 300), serialized → `events.json` (when the caller supplies no `events` of its own). The overlay/F8 now sends them automatically. **DONE.**
+3. ✅ **Snapshot builder** — `ZipArchive`: `manifest.json` + `runtime_metrics.json` (ProfilerRecorder) + `custom/*`. Repurpose the `memory_dump` slot → `diagnostic_snapshot.zip`, MIME `application/zip`. **DONE** (`Runtime/DiagnosticSnapshot.cs`).
+4. ✅ **Save state provider** — `RegisterSaveStateProvider`, called at Capture when `includeSaveState`. **DONE (P1)**.
+5. ✅ **Diagnostic file provider** — `RegisterDiagnosticFileProvider(name, provider)` → `custom/*` in the zip. **DONE**.
+6. ✅ **Overlay checkboxes** + defaults — "Include save state" (gated on a provider) + "Include diagnostic snapshot" (always), seeded from the config. **DONE**.
+7. ✅ **Backend** — `application/zip` added to the `memory_dump` MIME allowlist + `application/zip → zip` extension mapping; the enum/slot stays `memory_dump` (no migration). The limit runs under the existing `MAX_MEMORY_DUMP_BYTES` (100 MB ≥ SDK 25 MB), a separate env variable isn't needed. **DONE**.
+8. **Tests** — ✅ context merge + breadcrumb cap + save-state resolver (Editmode) + zip contents/sanitization/determinism (`DiagnosticSnapshotTests`) + multipart field/cap (`BugyardClientTests`). Remaining: provider invocation and ProfilerRecorder sampling are runtime/PlayMode (unverified without the Unity editor); e2e against the backend is blocked by a pre-existing 401 in `report-upload.test.ts` (missing test auth/DB in the sandbox).
 
-### Stav P0 (fáze 1–2)
-Změněné/nové soubory:
+### P0 status (phases 1–2)
+Changed/new files:
 - `Runtime/Bugyard.cs` — public `SetContext/RemoveContext/ClearContext/Track`
-- `Runtime/BugyardRuntime.cs` — context store + breadcrumb buffer, zapojení do `CaptureRoutine`, úklid v `Teardown`
-- `Runtime/Breadcrumbs.cs` — **nový** `BreadcrumbBuffer` (bounded FIFO, JSON array → `events.json`)
-- `Runtime/ContextJson.cs` — `SerializeValue(object)` pro top-level array
+- `Runtime/BugyardRuntime.cs` — context store + breadcrumb buffer, wired into `CaptureRoutine`, cleaned up in `Teardown`
+- `Runtime/Breadcrumbs.cs` — **new** `BreadcrumbBuffer` (bounded FIFO, JSON array → `events.json`)
+- `Runtime/ContextJson.cs` — `SerializeValue(object)` for a top-level array
 - `Runtime/MetadataCollector.cs` — `Build(..., persistentContext)` merge
 - `Runtime/BugyardConfig.cs` — `maxBreadcrumbs`
-- `Tests/Editor/ContextMergeTests.cs`, `Tests/Editor/BreadcrumbBufferTests.cs` — **nové**
+- `Tests/Editor/ContextMergeTests.cs`, `Tests/Editor/BreadcrumbBufferTests.cs` — **new**
 
-> ⚠️ Testy zatím neproběhly v Unity (tady není editor). Spustit Editmode testy v Unity
-> Test Runneru před mergem.
+> ⚠️ The tests haven't run in Unity yet (no editor here). Run the Editmode tests in the Unity
+> Test Runner before merging.
 
-## Kam P1/P2 zapadnou (file-level)
+## Where P1/P2 fit (file-level)
 
-### P1 — save state provider → čistě SDK, **0 změn v backendu**
-| Kus | Soubor |
+### P1 — save state provider → purely SDK, **0 backend changes**
+| Piece | File |
 |---|---|
-| `RegisterSaveStateProvider(Func<byte[]>)` | `Runtime/Bugyard.cs` (vedle `SetContext`/`Track`) |
-| uložení provideru + volání při Capture | `Runtime/BugyardRuntime.cs` — `_saveStateProvider`, artifacts blok v `CaptureRoutine`: `saveState = input.saveState ?? (include ? provider() : null)` |
+| `RegisterSaveStateProvider(Func<byte[]>)` | `Runtime/Bugyard.cs` (next to `SetContext`/`Track`) |
+| store the provider + call it at Capture | `Runtime/BugyardRuntime.cs` — `_saveStateProvider`, artifacts block in `CaptureRoutine`: `saveState = input.saveState ?? (include ? provider() : null)` |
 | `includeSaveState` flag | `Runtime/ReportModels.cs` → `ReportInput` |
 | overlay checkbox | `Runtime/BugyardRuntime.cs` → `DrawForm` + `Submit` |
 
-Slot `save_state` na backendu už existuje (MIME `octet-stream`/`json`, enum, testy) → backend beze změny.
+The `save_state` slot already exists on the backend (MIME `octet-stream`/`json`, enum, tests) → backend unchanged.
 
-### P2 — diagnostic snapshot → SDK + **1 povinný řádek v backendu**
-| Kus | Soubor |
+### P2 — diagnostic snapshot → SDK + **1 mandatory line in the backend**
+| Piece | File |
 |---|---|
 | `RegisterDiagnosticFileProvider(name, Func<byte[]>)` | `Runtime/Bugyard.cs` |
-| providery + ProfilerRecorder + zip build | `Runtime/BugyardRuntime.cs` |
-| zip builder (manifest + runtime_metrics + custom/*) | **nový** `Runtime/DiagnosticSnapshot.cs` |
+| providers + ProfilerRecorder + zip build | `Runtime/BugyardRuntime.cs` |
+| zip builder (manifest + runtime_metrics + custom/*) | **new** `Runtime/DiagnosticSnapshot.cs` |
 | repurpose `memoryDump` → `diagnosticSnapshot` | `Runtime/ReportModels.cs` (`ReportInput`/`ReportArtifacts`) |
-| filename/MIME `memory_dump.gz`/gzip → `diagnostic_snapshot.zip`/zip | `Runtime/BugyardClient.cs` (`SendWire`, dnes ř. ~194–196) |
-| **`application/zip` do MIME allowlistu** | `apps/backend/.../reports/report-upload.ts` (`memory_dump` allowlist) |
+| filename/MIME `memory_dump.gz`/gzip → `diagnostic_snapshot.zip`/zip | `Runtime/BugyardClient.cs` (`SendWire`, currently ~lines 194–196) |
+| **`application/zip` to the MIME allowlist** | `apps/backend/.../reports/report-upload.ts` (`memory_dump` allowlist) |
 
-> ⚠️ **Cross-repo past:** backend dnes pro `memory_dump` povoluje jen
-> `['application/gzip','application/octet-stream']`. Dokud se nepřidá `application/zip`,
-> SDK pošle zip a **backend ho odmítne 415 až v runtime** (ne při kompilaci). MIME řádek
-> v backendu a změna filename/MIME v `BugyardClient` musí jít **spolu**.
+> ⚠️ **Cross-repo trap:** today the backend allows only
+> `['application/gzip','application/octet-stream']` for `memory_dump`. Until `application/zip`
+> is added, the SDK sends a zip and **the backend rejects it with 415 at runtime** (not at
+> compile time). The MIME line in the backend and the filename/MIME change in `BugyardClient`
+> must ship **together**.
 
-## Explicitně mimo scope (zatím)
-- Raw memory/arena dump jako default
+## Explicitly out of scope (for now)
+- Raw memory/arena dump as a default
 - OS/process dump
-- Unity Memory Profiler snapshot jako default (jen advanced opt-in v kroku 3/custom)
-- Async save provider (zvážit, ne nutné pro MVP)
+- Unity Memory Profiler snapshot as a default (only an advanced opt-in in step 3/custom)
+- Async save provider (consider it, not required for the MVP)
 
-## Definice hotovo
-Tester dá F8 → zaškrtne snapshot → report v dashboardu má samostatné logs/events/context/save_state
-+ `diagnostic_snapshot.zip` s runtime metrikami; dev viděl logy bez rozzipovávání.
+## Definition of done
+A tester hits F8 → checks the snapshot → the report in the dashboard has separate logs/events/context/save_state
++ a `diagnostic_snapshot.zip` with runtime metrics; the dev could read the logs without unzipping.

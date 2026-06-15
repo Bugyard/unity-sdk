@@ -106,6 +106,57 @@ namespace BugyardSDK
         }
 
         /// <summary>
+        /// Register a callback that produces the current game save / state blob on demand. When a
+        /// report is captured with save-state inclusion enabled — per-report
+        /// <see cref="ReportInput.includeSaveState"/>, the overlay's "Include save state" checkbox, or
+        /// <see cref="BugyardConfig.includeSaveStateByDefault"/> — the SDK invokes the provider while
+        /// capturing and uploads the returned bytes as the <c>save_state</c> attachment. The provider
+        /// runs on the main thread during capture, so keep it fast; return
+        /// <see cref="SaveState.None"/> when there is nothing to send. An explicit
+        /// <see cref="ReportInput.saveState"/> always takes precedence over the provider. Registering
+        /// replaces any prior provider; pass null (or call <see cref="UnregisterSaveStateProvider"/>)
+        /// to remove it.
+        /// </summary>
+        public static void RegisterSaveStateProvider(SaveStateProvider provider)
+        {
+            if (!EnsureReady()) return;
+            _runtime.RegisterSaveStateProvider(provider);
+        }
+
+        /// <summary>Remove a provider registered via <see cref="RegisterSaveStateProvider"/>. No-op if none set or not initialized.</summary>
+        public static void UnregisterSaveStateProvider()
+        {
+            if (_runtime == null) return;
+            _runtime.RegisterSaveStateProvider(null);
+        }
+
+        /// <summary>
+        /// Register a named producer of a custom diagnostic file. When a report is captured with
+        /// diagnostic-snapshot inclusion enabled — per-report
+        /// <see cref="ReportInput.includeDiagnosticSnapshot"/>, the overlay's "Include diagnostic
+        /// snapshot" checkbox, or <see cref="BugyardConfig.includeDiagnosticSnapshotByDefault"/> — the
+        /// SDK invokes every registered provider and stores each one's bytes as <c>custom/&lt;name&gt;</c>
+        /// inside the report's <c>diagnostic_snapshot.zip</c>, alongside the auto-collected runtime
+        /// metrics. Use this for game-specific state Unity can't surface on its own (AI state, current
+        /// wave, RNG seed, a managed-heap dump, …). The provider runs on the main thread during
+        /// capture, so keep it fast; return null/empty to contribute nothing. Registering the same
+        /// <paramref name="name"/> replaces the prior provider; pass a null provider (or call
+        /// <see cref="UnregisterDiagnosticFileProvider"/>) to remove it.
+        /// </summary>
+        public static void RegisterDiagnosticFileProvider(string name, DiagnosticFileProvider provider)
+        {
+            if (!EnsureReady()) return;
+            _runtime.RegisterDiagnosticFileProvider(name, provider);
+        }
+
+        /// <summary>Remove a provider registered via <see cref="RegisterDiagnosticFileProvider"/>. No-op if absent or not initialized.</summary>
+        public static void UnregisterDiagnosticFileProvider(string name)
+        {
+            if (_runtime == null) return;
+            _runtime.RegisterDiagnosticFileProvider(name, null);
+        }
+
+        /// <summary>
         /// Set a persistent game-context value (inventory, quest flags, checkpoint id, match id,
         /// wave number, boss phase — whatever helps reproduce a bug). The current context is merged
         /// into every report's <c>metadata.context</c>; per-report context passed to
