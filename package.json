@@ -4,9 +4,9 @@
   "displayName": "Bugyard Unity SDK",
   "description": "Capture screenshots, logs, scene name, player position, build version and device info from Unity playtests and send them to your Bugyard dashboard with one hotkey.",
   "unity": "2021.3",
-  "documentationUrl": "https://github.com/bugyard/bugyard-unity#readme",
-  "changelogUrl": "https://github.com/bugyard/bugyard-unity/blob/main/CHANGELOG.md",
-  "licensesUrl": "https://github.com/bugyard/bugyard-unity/blob/main/LICENSE",
+  "documentationUrl": "https://github.com/Bugyard/unity-sdk#readme",
+  "changelogUrl": "https://github.com/Bugyard/unity-sdk/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/Bugyard/unity-sdk/blob/main/LICENSE",
   "keywords": [
     "bug",
     "qa",

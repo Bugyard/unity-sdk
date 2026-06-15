@@ -6,6 +6,30 @@ All notable changes to this package are documented here. This project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- Optional extra capture channels on the multipart upload, matching the backend
+  ingestion contract: gameplay `events` (`events.json`), `save_state` (raw bytes or
+  JSON), and a gzip `memory_dump` (`memory_dump.gz`). Supplied programmatically via
+  new `ReportInput` fields (`events`, `saveState` / `saveStateIsJson`, `memoryDump`)
+  and bundled through the new `ReportArtifacts` type.
+- Free-form `context` object on `ReportInput` (`Dictionary<string, object>`,
+  arbitrarily nested) serialized verbatim into the metadata `context` field via the
+  new `ContextJson` writer.
+- Configurable client-side caps for the new payloads (`maxContextBytes` 16 KB,
+  `maxEventsBytes` 512 KB, `maxSaveStateBytes` 10 MB, `maxMemoryDumpBytes` 100 MB).
+  Oversized context and binary attachments are dropped before upload (they can't be
+  truncated) so the rest of the report still sends instead of being rejected with
+  `PAYLOAD_TOO_LARGE`.
+
+### Notes
+
+- The IMGUI overlay still files only the report body, screenshot and logs; the new
+  attachments and `context` are sent through `Bugyard.Capture(ReportInput, ...)`.
+- The offline queue persists metadata (including `context`), screenshot and logs, but
+  intentionally does **not** persist the heavy `events` / `save_state` / `memory_dump`
+  blobs; an offline replay is delivered without them.
+
 ## [0.1.0] - 2026-06-15
 
 ### Added
@@ -58,5 +82,5 @@ All notable changes to this package are documented here. This project adheres to
   uploads a synthetic report with the current config to verify connectivity and auth
   end-to-end, reporting success (with a dashboard link) or a precise failure reason.
 
-[Unreleased]: https://github.com/bugyard/bugyard-unity/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/bugyard/bugyard-unity/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Bugyard/unity-sdk/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Bugyard/unity-sdk/releases/tag/v0.1.0

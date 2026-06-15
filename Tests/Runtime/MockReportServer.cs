@@ -51,7 +51,7 @@ namespace BugyardSDK.Tests
             public string ContentType;
             public byte[] Body;
 
-            /// <summary>Multipart form field name → raw bytes (metadata, screenshot, logs).</summary>
+            /// <summary>Multipart form field name → raw bytes (metadata, screenshot, logs, events, save_state, memory_dump).</summary>
             public IReadOnlyDictionary<string, byte[]> Parts;
 
             public bool HasPart(string name) => Parts.ContainsKey(name);
@@ -62,6 +62,9 @@ namespace BugyardSDK.Tests
             public string MetadataText => PartText("metadata");
             public string LogsText => PartText("logs");
             public byte[] Screenshot => Parts.TryGetValue("screenshot", out byte[] b) ? b : null;
+            public byte[] Events => Parts.TryGetValue("events", out byte[] b) ? b : null;
+            public byte[] SaveState => Parts.TryGetValue("save_state", out byte[] b) ? b : null;
+            public byte[] MemoryDump => Parts.TryGetValue("memory_dump", out byte[] b) ? b : null;
         }
 
         readonly HttpListener _listener = new HttpListener();

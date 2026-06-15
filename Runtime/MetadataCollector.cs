@@ -47,6 +47,9 @@ namespace BugyardSDK
                     locale = CultureInfo.CurrentCulture.Name,
                     timezone = TimeZoneInfo.Local.Id,
                 },
+                // Serialize the free-form context bag here so the size cap is applied at the source;
+                // oversized context is dropped (null) rather than truncated into invalid JSON.
+                contextJson = PayloadLimits.ClampContext(input.context, config.maxContextBytes),
             };
         }
     }

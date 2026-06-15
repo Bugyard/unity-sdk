@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using BugyardSDK;
 
@@ -42,6 +43,21 @@ public class BugyardBootstrap : MonoBehaviour
                 title = "Player stuck",
                 description = "Auto-filed from gameplay code.",
                 severity = Severity.High,
+
+                // Optional free-form snapshot of app-internal state. Nest dictionaries, lists
+                // and primitives freely; it's stored verbatim alongside the report (bounded by
+                // maxContextBytes — oversized context is dropped rather than truncated).
+                context = new Dictionary<string, object>
+                {
+                    { "checkpoint", "desert_arena_entry" },
+                    { "health", 80 },
+                    { "questFlags", new Dictionary<string, object> { { "bridgeUnlocked", false } } },
+                },
+
+                // Optional attachments, each capped and dropped if oversized:
+                //   events     = RecentEventsJsonBytes(),   // -> events.json
+                //   saveState  = CurrentSaveBlob(),         // -> save_state.bin (set saveStateIsJson for JSON)
+                //   memoryDump = GzippedHeapDump(),         // -> memory_dump.gz
             },
             result =>
             {

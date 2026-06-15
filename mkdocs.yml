@@ -2,9 +2,9 @@ site_name: Bugyard Unity SDK
 site_description: >-
   Capture screenshots, logs, scene name, player position, build version and
   device info from Unity playtests and send them to your Bugyard dashboard.
-site_url: https://bugyard.github.io/bugyard-unity/
-repo_name: bugyard/bugyard-unity
-repo_url: https://github.com/bugyard/bugyard-unity
+site_url: https://bugyard.github.io/unity-sdk/
+repo_name: Bugyard/unity-sdk
+repo_url: https://github.com/Bugyard/unity-sdk
 edit_uri: edit/main/docs/
 copyright: Bugyard — MIT licensed
 
@@ -68,6 +68,9 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 plugins:
   - search
@@ -75,4 +78,4 @@ plugins:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/bugyard/bugyard-unity
+      link: https://github.com/Bugyard/unity-sdk

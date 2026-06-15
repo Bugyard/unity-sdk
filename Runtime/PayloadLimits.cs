@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -190,6 +191,47 @@ namespace BugyardSDK
                     $"[Bugyard] Metadata exceeded the {maxBytes / 1024} KB cap; free-text fields were truncated to fit.");
 
             return json;
+        }
+
+        /// <summary>
+        /// Serialize <paramref name="context"/> and return the JSON only if it fits
+        /// <paramref name="maxBytes"/>; otherwise drop it (return null, with a warning). Context is
+        /// structured app state, so an oversized bag is dropped wholesale rather than truncated into
+        /// invalid JSON. Returns null when there is no context to send. A non-positive cap is treated
+        /// as "no limit".
+        /// </summary>
+        public static string ClampContext(IReadOnlyDictionary<string, object> context, int maxBytes)
+        {
+            string json = ContextJson.Serialize(context);
+            if (string.IsNullOrEmpty(json)) return null;
+
+            int size = Encoding.UTF8.GetByteCount(json);
+            if (maxBytes > 0 && size > maxBytes)
+            {
+                Debug.LogWarning(
+                    $"[Bugyard] Report context is {size} bytes and exceeds the {maxBytes} byte cap; " +
+                    "it was dropped from the report.");
+                return null;
+            }
+            return json;
+        }
+
+        /// <summary>
+        /// Return <paramref name="data"/> unchanged if it fits <paramref name="maxBytes"/>; otherwise
+        /// drop it (return null, with a warning naming <paramref name="label"/>). Binary attachments
+        /// (gameplay events / save state / memory dump) can't be meaningfully shrunk client-side, so
+        /// an oversized one is omitted rather than shipped and rejected with <c>PAYLOAD_TOO_LARGE</c>.
+        /// A non-positive cap is treated as "no limit".
+        /// </summary>
+        public static byte[] ClampAttachment(byte[] data, int maxBytes, string label)
+        {
+            if (data == null || data.Length == 0) return data;
+            if (maxBytes <= 0 || data.Length <= maxBytes) return data;
+
+            Debug.LogWarning(
+                $"[Bugyard] {label} is {data.Length / 1024} KB (cap {maxBytes / 1024} KB) and can't be " +
+                "reduced; sending the report without it.");
+            return null;
         }
 
         // Truncate the longest of the report's free-text fields by half. Returns false when all

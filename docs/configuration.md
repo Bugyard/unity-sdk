@@ -1,51 +1,96 @@
 # Configuration
 
-Fields on the `BugyardConfig` asset. Create one with **Tools → Bugyard → Create
-Config Asset**, then assign it to your bootstrap script.
+`BugyardConfig` is a ScriptableObject. Create one with **Tools -> Bugyard ->
+Create Config Asset** or **Assets -> Create -> Bugyard -> Config**, then pass it
+to `Bugyard.Init(config)`.
+
+## Required connection fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `apiKey` | `string` | `""` | Project API key (e.g. `by_pk_test_xxx`). Don't commit production keys. |
-| `endpoint` | `string` | `https://api.bugyard.com` | Backend base URL, no trailing `/v1`. |
-| `environment` | `string` | `development` | Environment label sent with every report. |
-| `hotkey` | `KeyCode` | `F8` | Key that opens the overlay (any Active Input Handling setting). |
+| `apiKey` | `string` | `""` | Project API key, for example `by_pk_test_xxx`. Empty keys initialize the SDK but uploads are rejected with 401. |
+| `endpoint` | `string` | `https://api.bugyard.com` | Backend base URL, no trailing `/v1`. The SDK posts to `{endpoint}/v1/reports`. |
+| `environment` | `string` | `development` | Environment label sent with every report, for example `development`, `staging`, or `production`. |
+
+!!! warning "Keep live keys out of version control"
+    The `apiKey` is serialized into the asset. Commit a test key or an empty key,
+    then inject live keys at runtime or keep live-key config assets out of source
+    control.
+
+## Overlay and input
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hotkey` | `KeyCode` | `F8` | Key that opens the overlay. Works with legacy Input Manager, new Input System, or Both. |
+| `pauseWhileOpen` | `bool` | `false` | Set `Time.timeScale = 0` while the overlay is open and restore the previous scale on close. |
+| `blockGameplayInput` | `bool` | `true` | Block gameplay input while the overlay is open and expose `Bugyard.IsInputBlocked`. |
+
+`blockGameplayInput` neutralizes legacy Input Manager axes/buttons while the
+overlay is open. It cannot intercept every raw `Input.GetKey(...)` call or new
+Input System poll in your own scripts, so gate those paths yourself:
+
+```csharp
+if (Bugyard.IsInputBlocked)
+    return;
+```
+
+Leave `pauseWhileOpen` off unless pausing with `Time.timeScale = 0` is compatible
+with your game.
+
+## Capture defaults
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
 | `captureScreenshot` | `bool` | `true` | Capture a screenshot when a report is created. |
 | `captureLogs` | `bool` | `true` | Attach recent Unity console logs. |
-| `maxLogLines` | `int` | `500` | Recent log lines kept in the ring buffer. |
-| `pauseWhileOpen` | `bool` | `false` | Set `Time.timeScale = 0` while the overlay is open, restoring it on close. |
-| `blockGameplayInput` | `bool` | `true` | Stop form text reaching game controls; exposes `Bugyard.IsInputBlocked`. |
-| `defaultCategory` | `string` | `bug` | Category for reports that don't specify one. |
-| `maxScreenshotBytes` | `int` | `5 MB` | Screenshots above this are downscaled or dropped before upload. |
-| `maxLogBytes` | `int` | `2 MB` | Older log lines are trimmed to fit before upload. |
-| `maxMetadataBytes` | `int` | `256 KB` | Cap on serialized metadata size. |
-| `enableOfflineQueue` | `bool` | `true` | Persist failed reports to disk and retry on next launch. |
-| `maxQueuedReports` | `int` | `50` | Max failed reports kept on disk; oldest is dropped when full. |
+| `maxLogLines` | `int` | `500` | Recent log lines kept in the in-memory ring buffer. |
+| `defaultCategory` | `string` | `bug` | Category applied to reports that do not specify one. |
 
-!!! warning "Keep production keys out of version control"
-    The `apiKey` is serialized into the asset. Use a `by_pk_test_*` key in
-    committed assets, and inject the live key at runtime (or via a config asset
-    excluded from source control) for production builds.
+Screenshots are captured at the end of the frame after the overlay hides itself.
+Logs are captured from Unity's log callback after `Bugyard.Init(...)` runs.
 
-## Input handling
+## Client-side size caps
 
-The `hotkey` works under any **Active Input Handling** setting (Player Settings →
-Active Input Handling): the legacy Input Manager, the new Input System package, or
-**Both**.
+The client enforces these caps before upload so it does not send a payload that
+the backend would reject as too large.
 
-- `blockGameplayInput` neutralizes legacy Input Manager axes/buttons while the
-  overlay is open so typing into the form doesn't drive the game. Gate your own
-  raw `Input.GetKey(...)` / Input System polling on `Bugyard.IsInputBlocked`.
-- `pauseWhileOpen` holds `Time.timeScale` at `0` while the overlay is open and
-  restores the original scale on close/cancel.
+| Field | Type | Default | Behavior |
+|-------|------|---------|----------|
+| `maxScreenshotBytes` | `int` | `5 MB` | Oversized screenshots are progressively downscaled, then dropped if still too large. |
+| `maxLogBytes` | `int` | `2 MB` | Older log lines are trimmed to keep the newest logs. |
+| `maxMetadataBytes` | `int` | `256 KB` | Report free-text fields are truncated until metadata fits where possible. |
+| `maxContextBytes` | `int` | `16 KB` | Oversized `context` is dropped, not truncated. |
+| `maxEventsBytes` | `int` | `512 KB` | Oversized `events` attachments are dropped. |
+| `maxSaveStateBytes` | `int` | `10 MB` | Oversized `saveState` attachments are dropped. |
+| `maxMemoryDumpBytes` | `int` | `100 MB` | Oversized `memoryDump` attachments are dropped. |
 
-## Size limits
+Non-positive caps are treated as no limit for screenshot, metadata, context, and
+binary attachments. For logs, a non-positive cap sends no logs.
 
-The client enforces the size caps above *before* upload, so the payload never
-exceeds what the backend would reject with `PAYLOAD_TOO_LARGE`:
+## Offline queue
 
-- oversized screenshots are progressively downscaled or dropped,
-- logs are trimmed to their most recent lines, and
-- metadata free-text is truncated.
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enableOfflineQueue` | `bool` | `true` | Persist reports that fail because the player is offline or the server returns a 5xx, then retry them later. |
+| `maxQueuedReports` | `int` | `50` | Maximum failed reports kept on disk. When full, the oldest report is dropped. |
 
-See [What gets sent](what-gets-sent.md) for the full payload and the
-offline/failure queue.
+Queued reports store metadata, screenshot, and logs under the player's persistent
+data path. Large diagnostic blobs (`events`, `save_state`, `memory_dump`) are not
+persisted for replay to avoid filling player disks.
+
+Permanent failures such as bad API keys, validation errors, attachment-too-large
+responses, and rate limiting are not queued.
+
+## Editor validation
+
+The custom Inspector and build preprocessor warn about common mistakes:
+
+- empty API key,
+- live key stored in a source-controlled asset,
+- key with an unexpected prefix,
+- empty or malformed endpoint,
+- placeholder endpoint, and
+- endpoint that already ends in `/v1`.
+
+Use **Tools -> Bugyard -> Send Test Report** to verify the selected or discovered
+config asset against the backend before sharing a build with testers.

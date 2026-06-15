@@ -1,57 +1,157 @@
 # What gets sent
 
-A multipart `POST {endpoint}/v1/reports` with:
+The SDK uploads a multipart `POST {endpoint}/v1/reports`. `endpoint` comes from
+`BugyardConfig.endpoint`; the SDK appends `/v1/reports`.
 
-- **`metadata`** (JSON) — `clientReportId`, environment, build/engine/sdk version,
-  scene name, player position, the report body (title/description/severity),
-  device specs and runtime info.
-- **`screenshot`** (PNG) — unless disabled in config.
-- **`logs`** (text) — recent Unity console output, unless disabled in config.
+Auth uses:
 
-Auth is `Authorization: Bearer <apiKey>`. The `clientReportId` is stable across
-retries, so the backend deduplicates idempotently.
+```text
+Authorization: Bearer <apiKey>
+```
+
+Every capture gets a stable `clientReportId`. Retries reuse that id so the
+backend can deduplicate repeated uploads.
+
+## Multipart fields
+
+| Field | Type | When sent | Contents |
+|-------|------|-----------|----------|
+| `metadata` | JSON form field | Always | Report body, environment, build/runtime data, scene/player metadata, device info, optional reporter, optional context, and `clientReportId`. |
+| `screenshot` | `image/png` file | When `captureScreenshot` is enabled and capture succeeds | Current game frame captured after the overlay hides itself. |
+| `logs` | `text/plain` file | When `captureLogs` is enabled and logs are present | Recent Unity console output collected after `Bugyard.Init(...)`. |
+| `events` | `application/json` file | When `ReportInput.events` is supplied | Recent gameplay/event log bytes from your game. |
+| `save_state` | `application/octet-stream` or `application/json` file | When `ReportInput.saveState` is supplied | Save-game or game-state bytes. Set `saveStateIsJson` for JSON. |
+| `memory_dump` | `application/gzip` file | When `ReportInput.memoryDump` is supplied | Gzip-compressed memory or arena dump bytes. |
+
+## Metadata
+
+`metadata` includes:
+
+- `clientReportId`,
+- `environment`,
+- `buildVersion`,
+- `engine` and `engineVersion`,
+- `sdkVersion`,
+- `sceneName`,
+- `playerPosition`,
+- report body (`title`, `description`, `expectedResult`, `severity`, `category`),
+- optional `reporter` (`id`, `name`, `email`),
+- `device` (`os`, `cpu`, `gpu`, `ramMb`, `deviceModel`),
+- `runtime` (`fps`, `locale`, `timezone`), and
+- optional free-form `context`.
+
+`context` is supplied programmatically:
+
+```csharp
+Bugyard.Capture(new ReportInput
+{
+    title = "Stuck behind the bridge",
+    severity = Severity.High,
+    context = new Dictionary<string, object>
+    {
+        { "inventory", new[] { "sword", "shield" } },
+        { "questFlags", new Dictionary<string, object> { { "bridgeUnlocked", false } } },
+        { "health", 80 },
+    },
+});
+```
+
+`context` may contain nested dictionaries, lists, strings, numbers, booleans, and
+nulls. It is stored as part of the metadata payload. If the serialized context is
+larger than `maxContextBytes`, the SDK drops it before upload rather than
+truncating it into invalid JSON.
+
+## Optional attachments
+
+The overlay sends the report body, screenshot, and logs. Deeper diagnostics are
+added from code through `ReportInput`:
+
+```csharp
+Bugyard.Capture(new ReportInput
+{
+    title = "Quest state is blocked",
+    events = recentEventsJsonBytes,
+    saveState = currentSaveBytes,
+    saveStateIsJson = false,
+    memoryDump = gzippedMemoryDumpBytes,
+});
+```
+
+Each optional attachment is bounded by its own config cap. Oversized binary
+attachments are dropped before upload so the rest of the report can still send.
 
 ## Screenshots
 
 Screenshots are captured with `ScreenCapture.CaptureScreenshotAsTexture()` at the
-end of the frame, after the overlay has been hidden, so the report image shows the
-game frame without the Bugyard UI. The texture is PNG-encoded and destroyed
-immediately, so no texture is leaked. If capture or encoding fails, the report is
-still sent — just without the screenshot.
+end of the frame, after the overlay has been hidden. The texture is PNG-encoded
+and destroyed immediately. If capture or encoding fails, the report is still sent
+without a screenshot.
 
 Known limitations:
 
 - **Main display only.** Capture reads the back buffer of the primary display
-  (`Display.main`). On multi-display setups, secondary displays are not included.
-- **Render pipelines.** Built-in, URP and HDRP all render to the back buffer, so
-  capture works across pipelines. Effects that exist only outside that buffer
-  (e.g. some native plugin or XR/HMD compositor overlays) won't appear.
+  (`Display.main`). Secondary displays are not included.
+- **Render pipelines.** Built-in, URP, and HDRP render to the back buffer, so
+  capture works across those pipelines. Native plugin or XR/HMD compositor
+  overlays that exist outside that buffer may not appear.
 - **Resolution.** The image matches the current screen/back-buffer resolution.
-  Oversized PNGs are subject to the `maxScreenshotBytes` cap (see
-  [Configuration](configuration.md)).
+  Oversized PNGs are subject to `maxScreenshotBytes`.
 - **Editor vs. build.** In the Editor the captured frame is the Game view; in a
   player it is the full window.
 
-## Offline / failure queue
+## Logs
 
-If a report can't be uploaded — you're offline, or the server returns a 5xx — after
-the in-process retries it's saved to disk (under the player's persistent data path)
-and retried automatically on the next launch, and again right after the next
-successful send. Because the saved report keeps its original `clientReportId`, a
-report the backend already received is recognised and **not** duplicated.
+The SDK subscribes to Unity logging after `Bugyard.Init(...)` runs and keeps a
+bounded in-memory ring buffer. It does not collect historical logs from before
+initialization.
 
-The queue is bounded by `maxQueuedReports` (default 50); when it's full the oldest
-report is dropped. Set `enableOfflineQueue = false` in the config to turn it off.
+When `captureLogs` is enabled, the SDK uploads the newest logs that fit
+`maxLogBytes`. If logs exceed the cap, older lines are trimmed first.
 
-!!! note "What is *not* queued"
-    Permanent failures (bad API key, invalid report, attachment too large) and
-    rate limiting are not queued — replaying them wouldn't help. They fail fast
-    with an actionable message on `SendResult`.
+## Offline queue
+
+If a report cannot be uploaded because the player is offline or the server
+returns a 5xx, the SDK retries in-process. If it still fails, and
+`enableOfflineQueue` is true, it saves the report under the player's persistent
+data path and retries:
+
+- on the next launch, and
+- immediately after the next successful send.
+
+The queue stores metadata, screenshot, and logs. The metadata includes `context`,
+so context survives a queued replay. Large diagnostic blobs (`events`,
+`save_state`, `memory_dump`) are not persisted to disk for replay.
+
+The queue is bounded by `maxQueuedReports`; when full, the oldest report is
+dropped.
+
+## What is not queued
+
+The SDK does not queue failures that replaying will not fix:
+
+- bad or missing API key,
+- validation errors,
+- attachment-too-large responses,
+- rate limiting, and
+- other non-transient 4xx responses.
+
+Those fail fast with a `SendResult.message` suitable for UI or logs.
+
+## Privacy checklist
+
+Before enabling the SDK beyond a small internal test:
+
+- Review whether screenshots can include player personal data, chat, account
+  names, or unreleased content.
+- Review whether Unity logs can include secrets, access tokens, or user data.
+- Disable `captureScreenshot` or `captureLogs` where needed.
+- Keep `context`, `events`, `saveState`, and `memoryDump` limited to data your
+  team is allowed to collect.
+- Tune size caps and `maxQueuedReports` to match your disk-budget expectations.
 
 ## Limitations (0.1.x)
 
-- No `events`, `save_state`, `memory_dump`, or free-form `context` yet — only the
-  core metadata, screenshot and logs.
-- Overlay is minimal IMGUI; no theming.
-
-See the [Roadmap](https://github.com/bugyard/bugyard-unity#roadmap) for what's next.
+- Built-in overlay is minimal IMGUI and not themeable yet.
+- Advanced diagnostics (`context`, `events`, `save_state`, `memory_dump`) are
+  code-driven through `Bugyard.Capture(...)`; the overlay does not collect them.
+- The package is alpha. APIs and UI may change between minor versions.

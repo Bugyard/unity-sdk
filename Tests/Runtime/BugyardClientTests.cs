@@ -279,6 +279,62 @@ namespace BugyardSDK.Tests
             Assert.AreEqual(1, _server.RequestCount);
         }
 
+        // --- extra attachments (events / save_state / memory_dump) -------------------------
+
+        [UnityTest]
+        public IEnumerator Send_UploadsEventsSaveStateAndMemoryDumpWithContractFieldNames()
+        {
+            _server = new MockReportServer().Enqueue(Response.Json(201, "{\"status\":\"created\"}"));
+            _config.endpoint = _server.Endpoint;
+
+            byte[] events = Encoding.UTF8.GetBytes("[{\"t\":1,\"e\":\"jump\"}]");
+            byte[] saveState = { 1, 2, 3, 4 };
+            byte[] memoryDump = { 9, 8, 7 };
+
+            var artifacts = new ReportArtifacts
+            {
+                events = events,
+                saveState = saveState,
+                memoryDump = memoryDump,
+            };
+
+            yield return new BugyardClient(_config)
+                .Send(NewMetadata("id-attachments"), artifacts, null);
+
+            RecordedRequest req = _server.LastRequest;
+            Assert.IsTrue(req.HasPart("events"), "events.json attachment should be uploaded");
+            Assert.IsTrue(req.HasPart("save_state"), "save_state attachment should be uploaded");
+            Assert.IsTrue(req.HasPart("memory_dump"), "memory_dump attachment should be uploaded");
+            Assert.AreEqual(events, req.Events);
+            Assert.AreEqual(saveState, req.SaveState);
+            Assert.AreEqual(memoryDump, req.MemoryDump);
+        }
+
+        [UnityTest]
+        public IEnumerator Send_DropsOversizedAttachmentsBeforeUpload()
+        {
+            _config.maxEventsBytes = 4;
+            _config.maxSaveStateBytes = 4;
+            _config.maxMemoryDumpBytes = 4;
+            _server = new MockReportServer().Enqueue(Response.Json(201, "{\"status\":\"created\"}"));
+            _config.endpoint = _server.Endpoint;
+
+            var artifacts = new ReportArtifacts
+            {
+                events = new byte[64],
+                saveState = new byte[64],
+                memoryDump = new byte[64],
+            };
+
+            yield return new BugyardClient(_config)
+                .Send(NewMetadata("id-attach-cap"), artifacts, null);
+
+            RecordedRequest req = _server.LastRequest;
+            Assert.IsFalse(req.HasPart("events"), "oversized events should be dropped");
+            Assert.IsFalse(req.HasPart("save_state"), "oversized save_state should be dropped");
+            Assert.IsFalse(req.HasPart("memory_dump"), "oversized memory_dump should be dropped");
+        }
+
         // --- offline-queue replay ----------------------------------------------------------
 
         [UnityTest]

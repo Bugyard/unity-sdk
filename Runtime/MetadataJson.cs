@@ -71,6 +71,8 @@ namespace BugyardSDK
                 .Raw("reporter", reporter)
                 .Raw("device", device)
                 .Raw("runtime", runtime)
+                // Free-form context object, already serialized by ContextJson. Omitted when null.
+                .Raw("context", m.contextJson)
                 .End();
         }
 

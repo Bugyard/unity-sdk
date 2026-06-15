@@ -38,32 +38,53 @@ namespace BugyardSDK
         }
 
         /// <summary>
-        /// Upload the report, retrying transient failures. <paramref name="onComplete"/> is
-        /// invoked exactly once with the typed outcome (success + reportId/dashboardUrl, or
-        /// failure + a friendly reason) once the upload finishes or is given up on. A transient
-        /// failure is persisted for a later launch and reported with <see cref="SendResult.queuedForRetry"/>.
+        /// Upload a report carrying only a screenshot and logs. Convenience overload that wraps the
+        /// inputs in a <see cref="ReportArtifacts"/> and delegates to
+        /// <see cref="Send(ReportMetadata, ReportArtifacts, Action{SendResult})"/>.
         /// </summary>
         public IEnumerator Send(
             ReportMetadata metadata, byte[] screenshot, string logs, Action<SendResult> onComplete = null)
         {
+            return Send(metadata, new ReportArtifacts { screenshot = screenshot, logs = logs }, onComplete);
+        }
+
+        /// <summary>
+        /// Upload the report with all of its artifacts, retrying transient failures.
+        /// <paramref name="onComplete"/> is invoked exactly once with the typed outcome (success +
+        /// reportId/dashboardUrl, or failure + a friendly reason) once the upload finishes or is
+        /// given up on. A transient failure is persisted for a later launch and reported with
+        /// <see cref="SendResult.queuedForRetry"/>.
+        /// </summary>
+        public IEnumerator Send(
+            ReportMetadata metadata, ReportArtifacts artifacts, Action<SendResult> onComplete = null)
+        {
+            artifacts = artifacts ?? new ReportArtifacts();
+
             // Enforce the config size caps before upload so we don't ship a payload the backend
             // rejects with PAYLOAD_TOO_LARGE: oversized screenshots are downscaled (or dropped),
-            // logs are trimmed to their most recent lines, and metadata free-text is truncated.
-            // The clamped artifacts are also exactly what we persist on failure, so a replay is
-            // byte-identical to this attempt.
-            screenshot = PayloadLimits.ClampScreenshot(screenshot, _config.maxScreenshotBytes);
-            logs = PayloadLimits.ClampLogs(logs, _config.maxLogBytes);
+            // logs are trimmed to their most recent lines, metadata free-text is truncated, and the
+            // binary attachments (events / save state / memory dump) are dropped when over their cap.
+            artifacts.screenshot = PayloadLimits.ClampScreenshot(artifacts.screenshot, _config.maxScreenshotBytes);
+            artifacts.logs = PayloadLimits.ClampLogs(artifacts.logs, _config.maxLogBytes);
+            artifacts.events = PayloadLimits.ClampAttachment(artifacts.events, _config.maxEventsBytes, "Gameplay events");
+            artifacts.saveState = PayloadLimits.ClampAttachment(artifacts.saveState, _config.maxSaveStateBytes, "Save state");
+            artifacts.memoryDump = PayloadLimits.ClampAttachment(artifacts.memoryDump, _config.maxMemoryDumpBytes, "Memory dump");
             string json = PayloadLimits.ClampMetadata(metadata, _config.maxMetadataBytes);
 
             SendResult result = null;
-            yield return SendWire(json, screenshot, logs, r => result = r);
+            yield return SendWire(json, artifacts, r => result = r);
 
             // A transient failure (offline / server error) is saved so a later online launch can
             // deliver it. Permanent failures (auth, validation, too-large) and rate limiting are
             // not queued — replaying them wouldn't help.
             if (result != null && !result.success && _config.enableOfflineQueue && ShouldPersist(result))
             {
-                if (OfflineReportQueue.Enqueue(_config, json, screenshot, logs, metadata.clientReportId))
+                // Only the lightweight artifacts (screenshot + logs) and the metadata — which carries
+                // the free-form context inline — are persisted for cross-session retry. The heavy
+                // diagnostic blobs (events / save state / memory dump, up to 100 MB) are intentionally
+                // not written to disk, so an offline replay is delivered without them rather than
+                // bloating the queue. Context survives because it travels inside the metadata JSON.
+                if (OfflineReportQueue.Enqueue(_config, json, artifacts.screenshot, artifacts.logs, metadata.clientReportId))
                 {
                     result.queuedForRetry = true;
                     result.message =
@@ -96,8 +117,11 @@ namespace BugyardSDK
 
                 foreach (OfflineReportQueue.Entry entry in entries)
                 {
+                    // Queued replays carry only the persisted screenshot + logs; the heavy blobs
+                    // were never written to disk (see Send), so they're absent on replay by design.
+                    var artifacts = new ReportArtifacts { screenshot = entry.Screenshot, logs = entry.Logs };
                     SendResult result = null;
-                    yield return SendWire(entry.MetadataJson, entry.Screenshot, entry.Logs, r => result = r);
+                    yield return SendWire(entry.MetadataJson, artifacts, r => result = r);
 
                     if (result != null && result.success)
                     {
@@ -135,7 +159,7 @@ namespace BugyardSDK
         // failures with backoff. Used for both fresh sends and queued replays. Backoff is
         // exponential by default; on a 429 carrying a Retry-After header we wait the
         // server-specified interval instead.
-        IEnumerator SendWire(string json, byte[] screenshot, string logs, Action<SendResult> onComplete)
+        IEnumerator SendWire(string json, ReportArtifacts art, Action<SendResult> onComplete)
         {
             string url = _config.endpoint.TrimEnd('/') + "/v1/reports";
 
@@ -149,13 +173,27 @@ namespace BugyardSDK
                 {
                     new MultipartFormDataSection("metadata", json),
                 };
-                if (screenshot != null && screenshot.Length > 0)
+                if (art.screenshot != null && art.screenshot.Length > 0)
                 {
-                    form.Add(new MultipartFormFileSection("screenshot", screenshot, "screenshot.png", "image/png"));
+                    form.Add(new MultipartFormFileSection("screenshot", art.screenshot, "screenshot.png", "image/png"));
                 }
-                if (!string.IsNullOrEmpty(logs))
+                if (!string.IsNullOrEmpty(art.logs))
                 {
-                    form.Add(new MultipartFormFileSection("logs", Encoding.UTF8.GetBytes(logs), "player.log", "text/plain"));
+                    form.Add(new MultipartFormFileSection("logs", Encoding.UTF8.GetBytes(art.logs), "player.log", "text/plain"));
+                }
+                if (art.events != null && art.events.Length > 0)
+                {
+                    form.Add(new MultipartFormFileSection("events", art.events, "events.json", "application/json"));
+                }
+                if (art.saveState != null && art.saveState.Length > 0)
+                {
+                    form.Add(art.saveStateIsJson
+                        ? new MultipartFormFileSection("save_state", art.saveState, "save_state.json", "application/json")
+                        : new MultipartFormFileSection("save_state", art.saveState, "save_state.bin", "application/octet-stream"));
+                }
+                if (art.memoryDump != null && art.memoryDump.Length > 0)
+                {
+                    form.Add(new MultipartFormFileSection("memory_dump", art.memoryDump, "memory_dump.gz", "application/gzip"));
                 }
 
                 using (var req = UnityWebRequest.Post(url, form))

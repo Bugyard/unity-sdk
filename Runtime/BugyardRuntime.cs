@@ -368,10 +368,20 @@ namespace BugyardSDK
             }
 
             ReportMetadata metadata = MetadataCollector.Build(_config, input);
-            string logs = _config.captureLogs ? LogsSnapshot() : null;
+            var artifacts = new ReportArtifacts
+            {
+                screenshot = screenshot,
+                logs = _config.captureLogs ? LogsSnapshot() : null,
+                // Gameplay events / save state / memory dump are supplied by callers via ReportInput
+                // (the overlay form doesn't collect them); pass through whatever was set.
+                events = input.events,
+                saveState = input.saveState,
+                saveStateIsJson = input.saveStateIsJson,
+                memoryDump = input.memoryDump,
+            };
 
             SendResult sent = null;
-            yield return _client.Send(metadata, screenshot, logs, r => { sent = r; onResult?.Invoke(r); });
+            yield return _client.Send(metadata, artifacts, r => { sent = r; onResult?.Invoke(r); });
 
             // A successful send means we're back online; opportunistically drain any backlog
             // persisted from earlier offline sessions.

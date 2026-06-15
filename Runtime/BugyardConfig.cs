@@ -53,6 +53,18 @@ namespace BugyardSDK
         [Tooltip("Max serialized metadata size in bytes. Default 256 KB.")]
         public int maxMetadataBytes = 256 * 1024;
 
+        [Tooltip("Max serialized free-form report context size in bytes. Oversized context is dropped (not truncated) before upload. Default 16 KB; counts within the metadata budget.")]
+        public int maxContextBytes = 16 * 1024;
+
+        [Tooltip("Max gameplay-events (events.json) attachment size in bytes. Oversized events are dropped before upload. Default 512 KB.")]
+        public int maxEventsBytes = 512 * 1024;
+
+        [Tooltip("Max save-state attachment size in bytes. Oversized save state is dropped before upload. Default 10 MB.")]
+        public int maxSaveStateBytes = 10 * 1024 * 1024;
+
+        [Tooltip("Max memory-dump attachment size in bytes. Oversized dumps are dropped before upload. Default 100 MB.")]
+        public int maxMemoryDumpBytes = 100 * 1024 * 1024;
+
         [Header("Offline queue")]
         [Tooltip("Persist reports that fail to upload (e.g. while offline) to disk and retry them on the next launch. The stable clientReportId keeps cross-session retries idempotent, so no duplicate report is created.")]
         public bool enableOfflineQueue = true;
